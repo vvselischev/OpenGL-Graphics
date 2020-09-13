@@ -1,0 +1,2 @@
+cd Mandelbrot
+dotnet run
