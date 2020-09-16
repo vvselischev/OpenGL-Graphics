@@ -3,4 +3,3 @@ mono: none
 dotnet: 3.1.402
 script:
  - dotnet build
-
