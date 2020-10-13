@@ -1,6 +1,7 @@
 #include <iostream>
 #include <vector>
 #include <chrono>
+#include <cmath>
 
 #include <fmt/format.h>
 
@@ -89,6 +90,7 @@ int main(int, char **) {
     float clickedX = 0;
     float clickedY = 0;
     bool dragging = false;
+    bool shouldProcessMouse;
 
     glm::vec3 cameraPos = glm::vec3(0, 0, 1);
 
@@ -97,13 +99,25 @@ int main(int, char **) {
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
 
-        ImGui::GetMousePos();
+        // Fill background with solid color
+        glClearColor(0.30f, 0.55f, 0.60f, 1.00f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        // Gui start new frame
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
+
+        ImGui::Begin("Teapot");
+        ImGui::SliderFloat("ratio", &ratio, 1, 8);
+        shouldProcessMouse = !ImGui::IsWindowFocused();
+        ImGui::End();
 
         // Get windows size
         int display_w, display_h;
         glfwGetFramebufferSize(window, &display_w, &display_h);
 
-        if (ImGui::IsMouseDown(0)) {
+        if (shouldProcessMouse && ImGui::IsMouseDown(0)) {
             if (!dragging) {
                 dragging = true;
                 clickedX = ImGui::GetMousePos().x;
@@ -117,14 +131,25 @@ int main(int, char **) {
                                       glm::vec3(0.0, 1.0, 0.0));
             cameraPos = glm::vec3(rotationMat * glm::vec4(cameraPos, 1.0));
 
-            rotationMat = glm::rotate(rotationMat, glm::radians(-deltaY / display_h * rotationVelocity),
-                                      glm::cross(glm::vec3(0.0, 1.0, 0.0), cameraPos));
-            cameraPos = glm::vec3(rotationMat * glm::vec4(cameraPos, 1.0));
+            float angle = glm::acos(glm::dot(glm::normalize(cameraPos), glm::vec3(0.0, 1.0, 0.0)));
+            if (angle > 0.1 && angle < M_PI - 0.1) {
+                rotationMat = glm::rotate(rotationMat, glm::radians(-deltaY / display_h * rotationVelocity),
+                                          glm::cross(glm::vec3(0.0, 1.0, 0.0), cameraPos));
+                glm::vec3 cameraPosAfterYRotation = glm::vec3(rotationMat * glm::vec4(cameraPos, 1.0));
+
+                angle = glm::acos(glm::dot(glm::normalize(cameraPosAfterYRotation), glm::vec3(0.0, 1.0, 0.0)));
+
+                if (angle > 0.1 && angle < M_PI - 0.1) {
+                    cameraPos = cameraPosAfterYRotation;
+                }
+            }
         } else {
             dragging = false;
         }
 
-        radius = std::max(0.1f, std::min(1.0f, radius - io.MouseWheel * scaleVelocity));
+        if (shouldProcessMouse) {
+            radius = std::max(0.1f, std::min(1.0f, radius - io.MouseWheel * scaleVelocity));
+        }
 
         cameraPos = glm::normalize(cameraPos);
         cameraPos *= radius;
@@ -132,24 +157,8 @@ int main(int, char **) {
         // Set viewport to fill the whole window area
         glViewport(0, 0, display_w, display_h);
 
-        // Fill background with solid color
-        glClearColor(0.30f, 0.55f, 0.60f, 1.00f);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-        // Gui start new frame
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplGlfw_NewFrame();
-        ImGui::NewFrame();
-
-        ImGui::Begin("Teapot");
-        ImGui::SliderFloat("ratio", &ratio, 1, 5);
-        ImGui::End();
-
-        glm::mat4 Projection = glm::perspective(glm::radians(45.0f), (float) display_w / (float) display_h, 0.1f,
-                                                100.0f);
-
+        glm::mat4 Projection = glm::perspective(glm::radians(45.0f), (float) display_w / (float) display_h, 0.1f, 100.0f);
         glm::mat4 Model = glm::mat4(1.0f);
-
         glm::mat4 View = glm::lookAt(
                 cameraPos,
                 glm::vec3(0, 0, 0),

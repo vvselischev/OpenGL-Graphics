@@ -24,6 +24,6 @@ void main()
 
     vec3 R2 = refract(I, normalize(aNormal), r);
     // Refraction of the second face is not performed. The following hack can be used:
-    // R2 = refract(R2, normalize(aNormal), 1 / r);
+    R2 = refract(R2, normalize(aNormal), 1 / r);
     o_frag_color = mix(vec4(texture(cubemap, R).rgb, 1.0), vec4(texture(cubemap, R2).rgb, 1.0), fresnel);
 }
