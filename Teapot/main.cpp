@@ -165,7 +165,8 @@ int main(int, char **) {
                 glm::vec3(0, 1, 0)
         );
 
-        glm::mat4 mvp = Projection * View * Model;
+        glm::mat4 cubemapView = glm::mat4(glm::mat3(View));
+        glm::mat4 vp = Projection * cubemapView;
 
         glDepthFunc(GL_LESS);
         simpleShader.use();
@@ -192,7 +193,7 @@ int main(int, char **) {
         glBindVertexArray(0);
 
         cubemapShader.use();
-        cubemapShader.set_uniform("MVP", glm::value_ptr(mvp));
+        cubemapShader.set_uniform("VP", glm::value_ptr(vp));
         glBindVertexArray(cubemapVAO);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_CUBE_MAP, cubemap);
