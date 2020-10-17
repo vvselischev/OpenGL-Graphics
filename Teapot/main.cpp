@@ -109,7 +109,7 @@ int main(int, char **) {
         ImGui::NewFrame();
 
         ImGui::Begin("Teapot");
-        ImGui::SliderFloat("ratio", &ratio, 1, 8);
+        ImGui::SliderFloat("ratio", &ratio, 1.01, 10);
         shouldProcessMouse = !ImGui::IsWindowFocused();
         ImGui::End();
 
