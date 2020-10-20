@@ -2,6 +2,7 @@
 #include <vector>
 #include <chrono>
 #include <cmath>
+#include <map>
 
 #include <fmt/format.h>
 
@@ -56,24 +57,40 @@ int main(int, char **) {
         return 1;
     }
 
-    auto mesh = LoadMeshes("../assets/teapot/teapot.obj", "../assets/teapot/", 10);
+    Model model;
+    LoadModel(model, "../assets/lighthouse/lighthouse.obj", "../assets/lighthouse/", 10);
 
     std::vector <std::string> faces
             {
-                    "../assets/posx.jpg",
-                    "../assets/negx.jpg",
-                    "../assets/posy.jpg",
-                    "../assets/negy.jpg",
-                    "../assets/posz.jpg",
-                    "../assets/negz.jpg"
+                    "../assets/bluecloud_ft.jpg",
+                    "../assets/bluecloud_bk.jpg",
+                    "../assets/bluecloud_up.jpg",
+                    "../assets/bluecloud_dn.jpg",
+                    "../assets/bluecloud_rt.jpg",
+                    "../assets/bluecloud_lf.jpg"
             };
-    auto cubemap = LoadCubemapTexture(faces);
-    auto cubemapVAO = LoadCubemapVertices();
+    auto cubemapTexture = LoadCubemapTexture(faces);
+    auto cubemapVAO = LoadCubeVertices(24.0f);
+
+    Mesh water;
+    LoadWater(water, "../assets/water.jpg",
+              "../assets/water_normal.jpg",
+              "../assets/water_dudv.png",
+              16.0, 8.0);
+
+    Landscape landscape;
+    LoadLandscape(landscape, "../assets/terrain_heightmap.jpg",
+                  "../assets/water.jpg",
+                  "../assets/grass_normal.png",
+                  0.5f,
+                  50);
 
     // init shader
     shader_t modelShader("model_shader.vs", "model_shader.fs");
     shader_t cubemapShader("cubemap_shader.vs", "cubemap_shader.fs");
     shader_t simpleShader("simple_shader.vs", "simple_shader.fs");
+    shader_t waterShader("water_shader.vs", "water_shader.fs");
+    shader_t landscapeShader("landscape_shader.vs", "landscape_shader.fs");
 
     // Setup GUI context
     IMGUI_CHECKVERSION();
@@ -89,10 +106,22 @@ int main(int, char **) {
     float ratio = 1.54;
     float clickedX = 0;
     float clickedY = 0;
+    float windVelocity = 0.00035f;
+    float windFactor = 0.0f;
     bool dragging = false;
     bool shouldProcessMouse;
 
     glm::vec3 cameraPos = glm::vec3(0, 0, 1);
+
+    DirectionalLight sun;
+    sun.direction = glm::vec4(1, 0.8, 1, 0.0);
+
+    Spotlight projector;
+    projector.angle = glm::radians(15.0f);
+    projector.position = glm::vec3(0, 0.3, 0);
+    projector.direction = glm::vec3(2, -2, 0);
+
+    unsigned int cube = LoadCubeVertices(1/64.0f);
 
     glEnable(GL_DEPTH_TEST);
 
@@ -148,7 +177,7 @@ int main(int, char **) {
         }
 
         if (shouldProcessMouse) {
-            radius = std::max(0.1f, std::min(1.0f, radius - io.MouseWheel * scaleVelocity));
+            radius = std::max(0.1f, radius - io.MouseWheel * scaleVelocity);
         }
 
         cameraPos = glm::normalize(cameraPos);
@@ -165,40 +194,68 @@ int main(int, char **) {
                 glm::vec3(0, 1, 0)
         );
 
-        glm::mat4 mvp = Projection * View * Model;
+        glm::mat4 cubemapView = glm::mat4(glm::mat3(View));
 
-        glDepthFunc(GL_LESS);
-        simpleShader.use();
-        simpleShader.set_uniform("model", glm::value_ptr(Model));
-        simpleShader.set_uniform("view", glm::value_ptr(View));
-        simpleShader.set_uniform("projection", glm::value_ptr(Projection));
-        glBindVertexArray(mesh.MeshVAO);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_CUBE_MAP, cubemap);
-        glDrawElements(GL_TRIANGLES, mesh.IndexCount, GL_UNSIGNED_INT, 0);
-        glBindVertexArray(0);
+        windFactor += windVelocity;
+        if (windFactor > 1.0) {
+            windFactor = 0;
+        }
 
-        glDepthFunc(GL_LEQUAL);
         modelShader.use();
+        Model = glm::translate(Model, glm::vec3(0, 0.1, 0));
         modelShader.set_uniform("model", glm::value_ptr(Model));
         modelShader.set_uniform("view", glm::value_ptr(View));
         modelShader.set_uniform("projection", glm::value_ptr(Projection));
-        modelShader.set_uniform("cameraPosition", cameraPos.x, cameraPos.y, cameraPos.z);
-        modelShader.set_uniform("ratio", ratio);
-        glBindVertexArray(mesh.MeshVAO);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_CUBE_MAP, cubemap);
-        glDrawElements(GL_TRIANGLES, mesh.IndexCount, GL_UNSIGNED_INT, 0);
-        glBindVertexArray(0);
+        Model = glm::translate(Model, glm::vec3(0, -0.1, 0));
 
-        cubemapShader.use();
-        cubemapShader.set_uniform("MVP", glm::value_ptr(mvp));
-        glBindVertexArray(cubemapVAO);
+        modelShader.set_uniform("sunPosition", sun.direction.x, sun.direction.y, sun.direction.z);
+        modelShader.set_uniform("projectorPosition", projector.position.x, projector.position.y, projector.position.z);
+        modelShader.set_uniform("projectorDirection", projector.direction.x, projector.direction.y, projector.direction.z);
+        modelShader.set_uniform("projectorAngle", projector.angle);
+        modelShader.set_uniform("cameraPosition", cameraPos.x, cameraPos.y, cameraPos.z);
+       // DrawModel(model, modelShader);
+
+        waterShader.use();
+        waterShader.set_uniform("model", glm::value_ptr(Model));
+        waterShader.set_uniform("view", glm::value_ptr(View));
+        waterShader.set_uniform("projection", glm::value_ptr(Projection));
+
+        waterShader.set_uniform("sunPosition", sun.direction.x, sun.direction.y, sun.direction.z);
+        waterShader.set_uniform("projectorPosition", projector.position.x, projector.position.y, projector.position.z);
+        waterShader.set_uniform("projectorDirection", projector.direction.x, projector.direction.y, projector.direction.z);
+        waterShader.set_uniform("projectorAngle", projector.angle);
+        waterShader.set_uniform("cameraPosition", cameraPos.x, cameraPos.y, cameraPos.z);
+        waterShader.set_uniform("windFactor", windFactor);
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_CUBE_MAP, cubemap);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
+        //DrawWater(water, waterShader);
+
+        landscapeShader.use();
+        landscapeShader.set_uniform("model", glm::value_ptr(Model));
+        landscapeShader.set_uniform("view", glm::value_ptr(View));
+        landscapeShader.set_uniform("projection", glm::value_ptr(Projection));
+        landscapeShader.set_uniform("sunPosition", sun.direction.x, sun.direction.y, sun.direction.z);
+        landscapeShader.set_uniform("projectorPosition", projector.position.x, projector.position.y, projector.position.z);
+        landscapeShader.set_uniform("projectorDirection", projector.direction.x, projector.direction.y, projector.direction.z);
+        landscapeShader.set_uniform("projectorAngle", projector.angle);
+        landscapeShader.set_uniform("cameraPosition", cameraPos.x, cameraPos.y, cameraPos.z);
+        DrawLandscape(landscape, landscapeShader);
+
+        simpleShader.use();
+        glBindVertexArray(cube);
+        Model = glm::translate(Model, glm::vec3(0, 0.4, 0));
+        simpleShader.set_uniform("model", glm::value_ptr(Model));
+        simpleShader.set_uniform("view", glm::value_ptr(View));
+        simpleShader.set_uniform("projection", glm::value_ptr(Projection));
+        Model = glm::translate(Model, glm::vec3(0, -0.4, 0));
+
         glDrawArrays(GL_TRIANGLES, 0, 36);
         glBindVertexArray(0);
-        glDepthFunc(GL_LESS);
+
+        glm::mat4 vp = Projection * cubemapView;
+        cubemapShader.use();
+        cubemapShader.set_uniform("VP", glm::value_ptr(vp));
+        //DrawCubemap(cubemapVAO, cubemapTexture, cubemapShader);
 
         // Generate gui render commands
         ImGui::Render();
