@@ -26,10 +26,56 @@
 
 #include "3rd-party/stb_image.h"
 
-static void glfw_error_callback(int error, const char *description)
-{
+static void glfw_error_callback(int error, const char *description) {
    std::cerr << fmt::format("Glfw Error {}: {}\n", error, description);
 }
+
+void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
+    glViewport(0, 0, width, height);
+}
+
+unsigned int reflectionFrameBuffer;
+unsigned int reflectionTexture;
+unsigned int reflectionDepthBuffer;
+unsigned int refractionFrameBuffer;
+unsigned int refractionTexture;
+unsigned int refractionDepthTexture;
+
+std::vector<unsigned int> shadowFrameBuffers;
+std::vector<unsigned int> shadowDepthTextures;
+
+const int REFLECTION_WIDTH = 1280;
+const int REFLECTION_HEIGHT = 720;
+
+const int REFRACTION_WIDTH = 1280;
+const int REFRACTION_HEIGHT = 720;
+
+const int SHADOW_WIDTH = 2048;
+const int SHADOW_HEIGHT = 2048;
+
+
+void CleanUp() {
+    glDeleteFramebuffers(1, &reflectionFrameBuffer);
+    glDeleteTextures(1, &reflectionTexture);
+    glDeleteRenderbuffers(1, &reflectionDepthBuffer);
+    glDeleteFramebuffers(1, &refractionFrameBuffer);
+    glDeleteTextures(1, &refractionTexture);
+    glDeleteTextures(1, &refractionDepthTexture);
+}
+
+void InitReflectionFrameBuffer() {
+    reflectionFrameBuffer = CreateFrameBuffer();
+    reflectionTexture = CreateTextureAttachment(REFLECTION_HEIGHT, REFLECTION_WIDTH);
+    reflectionDepthBuffer = CreateDepthBufferAttachment(REFLECTION_HEIGHT, REFLECTION_WIDTH);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+void InitRefractionFrameBuffer() {
+    refractionFrameBuffer = CreateFrameBuffer();
+    refractionTexture = CreateTextureAttachment(REFRACTION_HEIGHT, REFRACTION_WIDTH);
+    refractionDepthTexture = CreateDepthTextureAttachment(REFRACTION_HEIGHT, REFRACTION_WIDTH);
+}
+
 
 int main(int, char **) {
     // Use GLFW to create a simple window
@@ -49,6 +95,7 @@ int main(int, char **) {
     if (window == NULL)
         return 1;
     glfwMakeContextCurrent(window);
+    glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
     glfwSwapInterval(1); // Enable vsync
 
     // Initialize GLEW, i.e. fill all possible function pointers for current OpenGL context
@@ -57,8 +104,17 @@ int main(int, char **) {
         return 1;
     }
 
-    Model model;
-    LoadModel(model, "../assets/lighthouse/lighthouse.obj", "../assets/lighthouse/", 10);
+    glEnable(GL_DEPTH_TEST);
+
+    Scene scene;
+
+    Model lighthouse;
+    LoadModel(lighthouse, "../assets/lighthouse/lighthouse.obj", "../assets/lighthouse/", 4);
+    scene.lighthouse = lighthouse;
+
+    Model boat;
+    LoadModel(boat, "../assets/boat/gondol.obj", "../assets/boat/", 10);
+    scene.boat = boat;
 
     std::vector <std::string> faces
             {
@@ -69,21 +125,33 @@ int main(int, char **) {
                     "../assets/bluecloud_rt.jpg",
                     "../assets/bluecloud_lf.jpg"
             };
-    auto cubemapTexture = LoadCubemapTexture(faces);
-    auto cubemapVAO = LoadCubeVertices(24.0f);
+
+    Cubemap cubemap;
+    cubemap.texture = LoadCubemapTexture(faces);
+    cubemap.VAO = LoadCubeVertices(40.0f);
+    scene.cubemap = cubemap;
 
     Mesh water;
     LoadWater(water, "../assets/water.jpg",
               "../assets/water_normal.jpg",
               "../assets/water_dudv.png",
-              16.0, 8.0);
+              60.0, 6.0);
 
     Landscape landscape;
+    float scale = 20;
     LoadLandscape(landscape, "../assets/terrain_heightmap.jpg",
-                  "../assets/water.jpg",
-                  "../assets/grass_normal.png",
-                  0.5f,
-                  50);
+                  "../assets/sand_texture.jpg",
+                  "../assets/grass_texture.png",
+                  "../assets/rock_texture.jpg",
+                  1.5,
+                  50,
+                  0.2,
+                  0.5,
+                  scale);
+    scene.landscape = landscape;
+
+    scene.lighthouse.position = glm::vec3(-14, GetHeight(scene.landscape, 14, 7), -7);
+
 
     // init shader
     shader_t modelShader("model_shader.vs", "model_shader.fs");
@@ -91,6 +159,10 @@ int main(int, char **) {
     shader_t simpleShader("simple_shader.vs", "simple_shader.fs");
     shader_t waterShader("water_shader.vs", "water_shader.fs");
     shader_t landscapeShader("landscape_shader.vs", "landscape_shader.fs");
+    scene.modelShader = modelShader;
+    scene.cubemapShader = cubemapShader;
+    scene.simpleShader = simpleShader;
+    scene.landscapeShader = landscapeShader;
 
     // Setup GUI context
     IMGUI_CHECKVERSION();
@@ -108,30 +180,62 @@ int main(int, char **) {
     float clickedY = 0;
     float windVelocity = 0.00035f;
     float windFactor = 0.0f;
+    float waterLevel = 0.0f;
+    float boatVelocity = 0.25f;
+    float cameraVelocity = 0.1;
+    float cameraRotationUpVelocity = 0.04;
+    float projectorVelocity = 0.04f;
     bool dragging = false;
     bool shouldProcessMouse;
 
-    glm::vec3 cameraPos = glm::vec3(0, 0, 1);
+    glm::vec3 boatCentre = glm::vec3(-10, 0, -10);
+    glm::vec3 boatRadius = glm::vec3(0, 0, 8.4);
+    glm::vec3 boatOrtoRadius = glm::vec3(8.4, 0, 0);
+    glm::vec3 boatStartRadius = boatRadius;
+    scene.boat.position = boatCentre + boatStartRadius;
+    glm::vec3 boatDir = glm::vec3(1, 0, 0);
+
+    scene.cameraPos = glm::vec3(1, 0.8, 1);
+    scene.cameraDir = glm::vec3(1, 0, 0);
 
     DirectionalLight sun;
-    sun.direction = glm::vec4(1, 0.8, 1, 0.0);
+    sun.direction = glm::vec4(-1, 0.8, -1, 0.0);
+    scene.sun = sun;
 
     Spotlight projector;
     projector.angle = glm::radians(15.0f);
-    projector.position = glm::vec3(0, 0.3, 0);
-    projector.direction = glm::vec3(2, -2, 0);
+
+    projector.position = scene.lighthouse.position + glm::vec3(0, 0.75, 0);
+    projector.direction = glm::vec3(2, -0.5f, 0);
+    scene.projector = projector;
 
     unsigned int cube = LoadCubeVertices(1/64.0f);
+    scene.cube = cube;
 
-    glEnable(GL_DEPTH_TEST);
+    scene.waterLevel = waterLevel;
+
+    InitReflectionFrameBuffer();
+    InitRefractionFrameBuffer();
+
+    std::vector<float> planes {
+            1.0, 4.0, 10.0, 24.0
+    };
+
+    std::vector<std::pair<int, int>> resolutions {
+            {1024, 1024},
+            {512, 512},
+            {256, 256}
+    };
+
+    for (int i = 0; i < 3; i++) {
+        shadowFrameBuffers.push_back(CreateFrameBuffer());
+        shadowDepthTextures.push_back(CreateDepthTextureAttachment(resolutions[i].second, resolutions[i].first));
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+
+    scene.planes = planes;
 
     while (!glfwWindowShouldClose(window)) {
-        glfwPollEvents();
-
-        // Fill background with solid color
-        glClearColor(0.30f, 0.55f, 0.60f, 1.00f);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
         // Gui start new frame
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
@@ -142,120 +246,186 @@ int main(int, char **) {
         shouldProcessMouse = !ImGui::IsWindowFocused();
         ImGui::End();
 
+        if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+            scene.cameraPos += scene.cameraDir * cameraVelocity;
+        if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+            scene.cameraPos -= scene.cameraDir * cameraVelocity;
+        if (glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS) {
+            glm::mat4 rotationMat(1);
+            rotationMat = glm::rotate(rotationMat, cameraVelocity, glm::vec3(0.0, 1.0, 0.0));
+            scene.cameraDir = glm::vec3(rotationMat * glm::vec4(scene.cameraDir, 1.0));
+        }
+        if (glfwGetKey(window, GLFW_KEY_RIGHT) == GLFW_PRESS) {
+            glm::mat4 rotationMat(1);
+            rotationMat = glm::rotate(rotationMat, -cameraVelocity, glm::vec3(0.0, 1.0, 0.0));
+            scene.cameraDir = glm::vec3(rotationMat * glm::vec4(scene.cameraDir, 1.0));
+        }
+        if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS) {
+            glm::mat4 rotationMat(1);
+            rotationMat = glm::rotate(rotationMat, cameraRotationUpVelocity, glm::cross(scene.cameraDir, glm::vec3(0.0, 1.0, 0.0)));
+            glm::vec3 newDir = glm::vec3(rotationMat * glm::vec4(scene.cameraDir, 1.0));
+            if (glm::abs(glm::sin(glm::acos(glm::dot(glm::normalize(newDir), glm::vec3(0.0, 1.0, 0.0))))) > 0.1) {
+                scene.cameraDir = newDir;
+            }
+        }
+        if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS) {
+            glm::mat4 rotationMat(1);
+            rotationMat = glm::rotate(rotationMat, -cameraRotationUpVelocity, glm::cross(scene.cameraDir, glm::vec3(0.0, 1.0, 0.0)));
+            glm::vec3 newDir = glm::vec3(rotationMat * glm::vec4(scene.cameraDir, 1.0));
+            if (glm::abs(glm::sin(glm::acos(glm::dot(glm::normalize(newDir), glm::vec3(0.0, 1.0, 0.0))))) > 0.1) {
+                scene.cameraDir = newDir;
+            }
+        }
+
+        std::vector<glm::mat4> lightProjections;
+        std::vector<glm::mat4> lightSpaceMatrices;
+        for (int i = 0; i < 3; i++) {
+            lightSpaceMatrices.push_back(glm::mat4(1.0));
+            lightProjections.push_back(glm::mat4(1.0));
+        }
+
+        scene.shadowDepthTextures = shadowDepthTextures;
+        scene.lightSpaceMatrices = lightSpaceMatrices;
+
         // Get windows size
         int display_w, display_h;
         glfwGetFramebufferSize(window, &display_w, &display_h);
 
-        if (shouldProcessMouse && ImGui::IsMouseDown(0)) {
-            if (!dragging) {
-                dragging = true;
-                clickedX = ImGui::GetMousePos().x;
-                clickedY = ImGui::GetMousePos().y;
-            }
-            float deltaX = ImGui::GetMousePos().x - clickedX;
-            float deltaY = ImGui::GetMousePos().y - clickedY;
-
-            glm::mat4 rotationMat(1);
-            rotationMat = glm::rotate(rotationMat, glm::radians(-deltaX / display_w * rotationVelocity),
-                                      glm::vec3(0.0, 1.0, 0.0));
-            cameraPos = glm::vec3(rotationMat * glm::vec4(cameraPos, 1.0));
-
-            float angle = glm::acos(glm::dot(glm::normalize(cameraPos), glm::vec3(0.0, 1.0, 0.0)));
-            if (angle > 0.1 && angle < M_PI - 0.1) {
-                rotationMat = glm::rotate(rotationMat, glm::radians(-deltaY / display_h * rotationVelocity),
-                                          glm::cross(glm::vec3(0.0, 1.0, 0.0), cameraPos));
-                glm::vec3 cameraPosAfterYRotation = glm::vec3(rotationMat * glm::vec4(cameraPos, 1.0));
-
-                angle = glm::acos(glm::dot(glm::normalize(cameraPosAfterYRotation), glm::vec3(0.0, 1.0, 0.0)));
-
-                if (angle > 0.1 && angle < M_PI - 0.1) {
-                    cameraPos = cameraPosAfterYRotation;
-                }
-            }
-        } else {
-            dragging = false;
-        }
-
-        if (shouldProcessMouse) {
-            radius = std::max(0.1f, radius - io.MouseWheel * scaleVelocity);
-        }
-
-        cameraPos = glm::normalize(cameraPos);
-        cameraPos *= radius;
-
         // Set viewport to fill the whole window area
         glViewport(0, 0, display_w, display_h);
 
-        glm::mat4 Projection = glm::perspective(glm::radians(45.0f), (float) display_w / (float) display_h, 0.1f, 100.0f);
-        glm::mat4 Model = glm::mat4(1.0f);
-        glm::mat4 View = glm::lookAt(
-                cameraPos,
-                glm::vec3(0, 0, 0),
+        scene.Projection = glm::perspective(glm::radians(45.0f), (float) display_w / (float) display_h, 0.1f, 100.0f);
+        scene.worldModel = glm::mat4(1.0f);
+        scene.View = glm::lookAt(
+                scene.cameraPos,
+                scene.cameraDir + scene.cameraPos,
                 glm::vec3(0, 1, 0)
         );
 
-        glm::mat4 cubemapView = glm::mat4(glm::mat3(View));
+        glm::mat4 rotationBoat(1);
+        rotationBoat = glm::rotate(rotationBoat, glm::radians(boatVelocity),
+                                  glm::vec3(0.0, 1.0, 0.0));
+        boatRadius = glm::vec3(rotationBoat * glm::vec4(boatRadius, 1.0));
+        scene.boatRotation = glm::atan(glm::dot(boatRadius, boatOrtoRadius), glm::dot(boatRadius, boatStartRadius));
+        scene.boat.position = boatCentre + boatRadius;
+
+        glm::mat4 rotationProjector(1);
+        rotationProjector = glm::rotate(rotationProjector, projectorVelocity, glm::vec3(0.0, 1.0, 0.0));
+        scene.projector.direction = glm::vec3(rotationProjector * glm::vec4(scene.projector.direction, 1.0));
 
         windFactor += windVelocity;
         if (windFactor > 1.0) {
             windFactor = 0;
         }
 
-        modelShader.use();
-        Model = glm::translate(Model, glm::vec3(0, 0.1, 0));
-        modelShader.set_uniform("model", glm::value_ptr(Model));
-        modelShader.set_uniform("view", glm::value_ptr(View));
-        modelShader.set_uniform("projection", glm::value_ptr(Projection));
-        Model = glm::translate(Model, glm::vec3(0, -0.1, 0));
+        glEnable(GL_CLIP_DISTANCE0);
 
-        modelShader.set_uniform("sunPosition", sun.direction.x, sun.direction.y, sun.direction.z);
-        modelShader.set_uniform("projectorPosition", projector.position.x, projector.position.y, projector.position.z);
-        modelShader.set_uniform("projectorDirection", projector.direction.x, projector.direction.y, projector.direction.z);
-        modelShader.set_uniform("projectorAngle", projector.angle);
-        modelShader.set_uniform("cameraPosition", cameraPos.x, cameraPos.y, cameraPos.z);
-       // DrawModel(model, modelShader);
+        glBindFramebuffer(GL_FRAMEBUFFER, reflectionFrameBuffer);
+        glViewport(0, 0, REFLECTION_WIDTH, REFRACTION_HEIGHT);
+
+        glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        float cameraToWaterDistance = scene.cameraPos.y - waterLevel;
+        scene.cameraPos.y -= 2 * cameraToWaterDistance;
+        scene.cameraDir.y *= -1;
+        scene.View = glm::lookAt(
+                scene.cameraPos,
+                scene.cameraDir + scene.cameraPos,
+                glm::vec3(0, 1, 0)
+        );
+        scene.waterNormal = 1.0f;
+        scene.DrawScene();
+        scene.cameraPos.y += 2 * cameraToWaterDistance;
+        scene.cameraDir.y *= -1;
+        scene.View = glm::lookAt(
+                scene.cameraPos,
+                scene.cameraDir + scene.cameraPos,
+                glm::vec3(0, 1, 0)
+        );
+
+        glBindFramebuffer(GL_FRAMEBUFFER, refractionFrameBuffer);
+
+        glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        scene.waterNormal = -1.0f;
+        scene.DrawScene();
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+        glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glDisable(GL_CLIP_DISTANCE0);
+
+//        float nearPlane = 1.0f, farPlane = 24.0f;
+//        glm::mat4 lightProjection = glm::ortho(-10.0f, 10.0f, -10.0f, 10.0f, nearPlane, farPlane);
+        glm::mat4 lightView = glm::lookAt(scene.projector.position + glm::vec3(0,-7,0) + 10.0f * glm::vec3(scene.sun.direction.x, scene.sun.direction.y, scene.sun.direction.z),
+                                          glm::vec3(0.0f, 0.0f,  0.0f),
+                                          glm::vec3(0.0f, 1.0f,  0.0f));
+
+
+
+        CalculateCascades(lightProjections, planes, scene.View, lightView, display_w, display_h);
+
+        glm::mat4 oldView = scene.View;
+        glm::mat4 oldProjection = scene.Projection;
+
+        for (int i = 0; i < 3; i++) {
+
+            glViewport(0, 0, resolutions[i].first, resolutions[i].second);
+            glBindFramebuffer(GL_FRAMEBUFFER, shadowFrameBuffers[i]);
+            glClear(GL_DEPTH_BUFFER_BIT);
+
+            scene.View = lightView;
+            scene.Projection = lightProjections[i];
+            lightSpaceMatrices.push_back(scene.Projection * scene.View);
+
+            scene.DrawScene();
+
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        }
+
+        glViewport(0, 0, display_w, display_h);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        scene.View = oldView;
+        scene.Projection = oldProjection;
+
+        scene.shadowDepthTextures = shadowDepthTextures;
+        scene.lightSpaceMatrices = lightSpaceMatrices;
+
+        scene.DrawScene();
 
         waterShader.use();
-        waterShader.set_uniform("model", glm::value_ptr(Model));
-        waterShader.set_uniform("view", glm::value_ptr(View));
-        waterShader.set_uniform("projection", glm::value_ptr(Projection));
+        waterShader.set_uniform("model", glm::value_ptr(scene.worldModel));
+        waterShader.set_uniform("view", glm::value_ptr(scene.View));
+        waterShader.set_uniform("projection", glm::value_ptr(scene.Projection));
 
         waterShader.set_uniform("sunPosition", sun.direction.x, sun.direction.y, sun.direction.z);
-        waterShader.set_uniform("projectorPosition", projector.position.x, projector.position.y, projector.position.z);
-        waterShader.set_uniform("projectorDirection", projector.direction.x, projector.direction.y, projector.direction.z);
+        waterShader.set_uniform("projectorPosition", scene.projector.position.x, scene.projector.position.y, scene.projector.position.z);
+        waterShader.set_uniform("projectorDirection", scene.projector.direction.x, scene.projector.direction.y, scene.projector.direction.z);
         waterShader.set_uniform("projectorAngle", projector.angle);
-        waterShader.set_uniform("cameraPosition", cameraPos.x, cameraPos.y, cameraPos.z);
+        waterShader.set_uniform("cameraPosition", scene.cameraPos.x, scene.cameraPos.y, scene.cameraPos.z);
         waterShader.set_uniform("windFactor", windFactor);
+
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_CUBE_MAP, cubemapTexture);
-        //DrawWater(water, waterShader);
+        waterShader.set_uniform("reflection_texture", 0);
+        glBindTexture(GL_TEXTURE_2D, reflectionTexture);
+        glActiveTexture(GL_TEXTURE0 + 1);
+        waterShader.set_uniform("refraction_texture", 1);
+        glBindTexture(GL_TEXTURE_2D, scene.landscape.mesh.textures[0].id);
+        glActiveTexture(GL_TEXTURE0 + 2);
+        waterShader.set_uniform("water_normal", 2);
+        glBindTexture(GL_TEXTURE_2D, water.textures[1].id);
 
-        landscapeShader.use();
-        landscapeShader.set_uniform("model", glm::value_ptr(Model));
-        landscapeShader.set_uniform("view", glm::value_ptr(View));
-        landscapeShader.set_uniform("projection", glm::value_ptr(Projection));
-        landscapeShader.set_uniform("sunPosition", sun.direction.x, sun.direction.y, sun.direction.z);
-        landscapeShader.set_uniform("projectorPosition", projector.position.x, projector.position.y, projector.position.z);
-        landscapeShader.set_uniform("projectorDirection", projector.direction.x, projector.direction.y, projector.direction.z);
-        landscapeShader.set_uniform("projectorAngle", projector.angle);
-        landscapeShader.set_uniform("cameraPosition", cameraPos.x, cameraPos.y, cameraPos.z);
-        DrawLandscape(landscape, landscapeShader);
+        glActiveTexture(GL_TEXTURE0 + 3);
+        waterShader.set_uniform("water_dudv", 3);
+        glBindTexture(GL_TEXTURE_2D, water.textures[2].id);
 
-        simpleShader.use();
-        glBindVertexArray(cube);
-        Model = glm::translate(Model, glm::vec3(0, 0.4, 0));
-        simpleShader.set_uniform("model", glm::value_ptr(Model));
-        simpleShader.set_uniform("view", glm::value_ptr(View));
-        simpleShader.set_uniform("projection", glm::value_ptr(Projection));
-        Model = glm::translate(Model, glm::vec3(0, -0.4, 0));
 
-        glDrawArrays(GL_TRIANGLES, 0, 36);
-        glBindVertexArray(0);
-
-        glm::mat4 vp = Projection * cubemapView;
-        cubemapShader.use();
-        cubemapShader.set_uniform("VP", glm::value_ptr(vp));
-        //DrawCubemap(cubemapVAO, cubemapTexture, cubemapShader);
+        glBindVertexArray(water.MeshVAO);
+        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
         // Generate gui render commands
         ImGui::Render();
@@ -265,9 +435,12 @@ int main(int, char **) {
 
         // Swap the backbuffer with the frontbuffer that is used for screen display
         glfwSwapBuffers(window);
+        glfwPollEvents();
     }
 
     // Cleanup
+    CleanUp();
+
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();
     ImGui::DestroyContext();

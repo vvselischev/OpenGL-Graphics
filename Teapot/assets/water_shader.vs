@@ -11,11 +11,14 @@ uniform mat4 projection;
 
 out vec3 aPosition;
 out vec2 aTexCoords;
+out vec4 aClipCoords;
+out vec4 aLightPosition;
 
 void main()
 {
-    aTexCoords = texcoords;
-    vec4 pos = vec4(in_position, 1.0);
-    aPosition = in_position;
-    gl_Position = projection * view * model * pos;
+   vec4 pos = vec4(in_position, 1.0);
+   aPosition = in_position;
+   aTexCoords = texcoords;
+   aClipCoords = projection * view * model * pos;
+   gl_Position = aClipCoords;
 }

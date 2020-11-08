@@ -80,7 +80,7 @@ void LoadTexture(Model& model,
     } else if (comp == 4) {
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, image);
     } else {
-        assert(0);  // TODO
+        assert(0);
     }
 
     glGenerateMipmap(GL_TEXTURE_2D);
@@ -148,7 +148,6 @@ Mesh LoadMesh(Model& model,
             break;
     }
 
-    //std::cout << meshToAdd.material_ids.size() << ' ' << textures.size() << '\n';
     unsigned int VBO, EBO, VAO;
 
     glGenVertexArrays(1, &VAO);
@@ -340,34 +339,14 @@ void DrawCubemap(unsigned int vao, unsigned int texture, shader_t& shader) {
     glBindVertexArray(0);
 }
 
-void DrawWater(Mesh& water, shader_t& shader) {
-    glActiveTexture(GL_TEXTURE0);
-    shader.set_uniform("water_texture", 0);
-    glBindTexture(GL_TEXTURE_2D, water.textures[0].id);
-
-    glActiveTexture(GL_TEXTURE0 + 1);
-    shader.set_uniform("water_normal", 1);
-    glBindTexture(GL_TEXTURE_2D, water.textures[1].id);
-
-    glActiveTexture(GL_TEXTURE0 + 2);
-    shader.set_uniform("water_dudv", 2);
-    glBindTexture(GL_TEXTURE_2D, water.textures[2].id);
-
-    glBindVertexArray(water.MeshVAO);
-    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-
-    glBindVertexArray(0);
-    glActiveTexture(GL_TEXTURE0);
-}
-
 Texture LoadTileTexture(const std::string& path) {
     Texture texture;
 
     unsigned int textureID;
     glGenTextures(1, &textureID);
     glBindTexture(GL_TEXTURE_2D, textureID);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
     int width, height, nrChannels;
     unsigned char *data = stbi_load(path.c_str(), &width, &height, &nrChannels, 0);
@@ -395,6 +374,18 @@ Texture LoadTileTexture(const std::string& path) {
     return texture;
 }
 
+void DrawWater(Mesh& water, shader_t& shader, unsigned int reflection_texture) {
+    glActiveTexture(GL_TEXTURE0);
+    shader.set_uniform("reflection_texture", 0);
+    glBindTexture(GL_TEXTURE_2D, reflection_texture);
+
+    glBindVertexArray(water.MeshVAO);
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+
+    glBindVertexArray(0);
+    glActiveTexture(GL_TEXTURE0);
+}
+
 void LoadWater(Mesh& water, const std::string& texture_path,
                const std::string& normal_path,
                const std::string& dudv_path,
@@ -402,13 +393,13 @@ void LoadWater(Mesh& water, const std::string& texture_path,
                float density) {
     float planeVertices[] = {
             scale, 0.0f, scale,
-            0.0f, 0.0f,
-            scale, 0.0f,  -scale,
             0.0f, density,
+            scale, 0.0f,  -scale,
+            0.0f, 0.0f,
             -scale, 0.0f, -scale,
-            density, density,
+            density, 0.0f,
             -scale, 0.0f,  scale,
-            density, 0.0f
+            density, density
     };
 
     unsigned int indices[] = { 0, 1, 3, 1, 2, 3};
@@ -445,12 +436,19 @@ void LoadWater(Mesh& water, const std::string& texture_path,
 
 void DrawLandscape(Landscape& model, shader_t& shader) {
     glActiveTexture(GL_TEXTURE0);
-    shader.set_uniform("terrain_texture", 0);
+    shader.set_uniform("sand_texture", 0);
     glBindTexture(GL_TEXTURE_2D, model.mesh.textures[0].id);
 
-//    glActiveTexture(GL_TEXTURE0 + 1);
-//    shader.set_uniform("terrain_normal", 1);
-//    glBindTexture(GL_TEXTURE_2D, model.mesh.textures[1].id);
+    glActiveTexture(GL_TEXTURE0 + 1);
+    shader.set_uniform("grass_texture", 1);
+    glBindTexture(GL_TEXTURE_2D, model.mesh.textures[1].id);
+
+    glActiveTexture(GL_TEXTURE0 + 2);
+    shader.set_uniform("rock_texture", 2);
+    glBindTexture(GL_TEXTURE_2D, model.mesh.textures[2].id);
+
+    shader.set_uniform("sand_threshold", model.sandThreshold);
+    shader.set_uniform("grass_threshold", model.grassThreshold);
 
     glBindVertexArray(model.mesh.MeshVAO);
     glDrawElements(GL_TRIANGLES, model.mesh.IndexCount, GL_UNSIGNED_INT, 0);
@@ -461,10 +459,14 @@ void DrawLandscape(Landscape& model, shader_t& shader) {
 
 void LoadLandscape(Landscape& landscape,
                    const std::string height_path,
-                   const std::string texture_path,
-                   const std::string normal_path,
+                   const std::string sand_path,
+                   const std::string grass_path,
+                   const std::string rock_path,
                    float heightCoefficient,
-                   int texture_density) {
+                   int texture_density,
+                   float sandThreshold,
+                   float grassThreshold,
+                   int scale) {
     int width, height, nrChannels;
     unsigned char *data = stbi_load(height_path.c_str(), &width, &height, &nrChannels, 0);
     if (data) {
@@ -496,35 +498,38 @@ void LoadLandscape(Landscape& landscape,
     unsigned int indicesOffset = 0;
     for (int hh = 1; hh <= height - 2; hh += 2) {
         for (int ww = 1; ww <= width - 2; ww += 2) {
-            float i = (float)hh / height  - 1;
-            float j = (float)ww / width - 1;
-            float shiftW = 1.0 / width;
-            float shiftH = 1.0 / height;
+            float i = ((float)hh / height  - 1) * scale;
+            float j = ((float)ww / width - 1) * scale;
+            float shiftW = scale * 1.0 / width;
+            float shiftH = scale * 1.0 / height;
 
             int ii = hh;
             int jj = ww;
 
-            // hh % texture_density / 4.0
-            //(ww - 1) % texture_density
-            // ww % texture_density
-            //(ww + 1) % texture_density
-
             float density_f = (float)texture_density;
+            float dHPlus =  ((hh + 1) % texture_density) / density_f;
+            if (dHPlus == 0) {
+                dHPlus = 1;
+            }
+            float dWPlus =  ((ww + 1) % texture_density) / density_f;
+            if (dWPlus == 0) {
+                dWPlus = 1;
+            }
 
             float current[] = {
                     i, landscape.heightMap[ii][jj + 1], j + shiftW,
-                    (hh % texture_density) / density_f, ((ww + 1) % texture_density) / density_f,
+                    (hh % texture_density) / density_f, dWPlus,
                     i + shiftH, landscape.heightMap[ii + 1][jj + 1], j + shiftW,
-                    ((hh + 1) % texture_density) / density_f, ((ww + 1) % texture_density) / density_f,
+                    dHPlus, dWPlus,
                     i, landscape.heightMap[ii][jj], j,
                     (hh % texture_density) / density_f, (ww % texture_density) / density_f,
                     i + shiftH, landscape.heightMap[ii + 1][jj], j,
-                    ((hh + 1) % texture_density) / density_f, (ww % texture_density) / density_f,
+                    dHPlus, (ww % texture_density) / density_f,
 
                     i + shiftH, landscape.heightMap[ii + 1][jj], j,
-                    ((hh + 1) % texture_density) / density_f, (ww % texture_density) / density_f,
+                    dHPlus, (ww % texture_density) / density_f,
                     i + shiftH, landscape.heightMap[ii + 1][jj - 1], j - shiftW,
-                    ((hh + 1) % texture_density) / density_f, ((ww - 1) % texture_density) / density_f,
+                    dHPlus, ((ww - 1) % texture_density) / density_f,
                     i, landscape.heightMap[ii][jj], j,
                     (hh % texture_density) / density_f, (ww % texture_density) / density_f,
                     i, landscape.heightMap[ii][jj - 1], j - shiftW,
@@ -542,11 +547,11 @@ void LoadLandscape(Landscape& landscape,
                     i - shiftH, landscape.heightMap[ii - 1][jj], j,
                     ((hh - 1) % texture_density) / density_f, (ww % texture_density) / density_f,
                     i - shiftH, landscape.heightMap[ii - 1][jj + 1], j + shiftW,
-                    ((hh - 1) % texture_density) / density_f, ((ww + 1) % texture_density) / density_f,
+                    ((hh - 1) % texture_density) / density_f, dWPlus,
                     i, landscape.heightMap[ii][jj], j,
                     (hh % texture_density) / density_f, (ww % texture_density) / density_f,
                     i, landscape.heightMap[ii][jj + 1], j + shiftW,
-                    (hh % texture_density) / density_f, ((ww + 1) % texture_density) / density_f
+                    (hh % texture_density) / density_f, dWPlus
             };
 
             unsigned int currentIndices[] = {
@@ -590,6 +595,170 @@ void LoadLandscape(Landscape& landscape,
 
     landscape.mesh.IndexCount = indices.size();
     landscape.mesh.MeshVAO = VAO;
-    landscape.mesh.textures.push_back(LoadTileTexture(texture_path));
-   // landscape.mesh.textures.push_back(LoadTileTexture(normal_path));
+    landscape.mesh.textures.push_back(LoadTileTexture(sand_path));
+    landscape.mesh.textures.push_back(LoadTileTexture(grass_path));
+    landscape.mesh.textures.push_back(LoadTileTexture(rock_path));
+
+    landscape.grassThreshold = grassThreshold;
+    landscape.sandThreshold = sandThreshold;
+
+    landscape.scale = scale;
+    landscape.mapWidth = width;
+    landscape.mapHeight = height;
 }
+
+float GetHeight(Landscape& landscape, int x, int z) {
+    return landscape.heightMap[landscape.mapHeight - x * landscape.mapHeight / landscape.scale]
+        [landscape.mapWidth - z * landscape.mapHeight / landscape.scale];
+}
+
+unsigned int CreateFrameBuffer() {
+    unsigned int FBO;
+    glGenFramebuffers(1, &FBO);
+    glBindFramebuffer(GL_FRAMEBUFFER, FBO);
+    return FBO;
+}
+
+unsigned int CreateTextureAttachment(int height, int width) {
+    unsigned int textureID;
+    glGenTextures(1, &textureID);
+    glBindTexture(GL_TEXTURE_2D, textureID);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, textureID, 0);
+    return textureID;
+}
+
+unsigned int CreateDepthTextureAttachment(int height, int width) {
+    unsigned int textureID;
+    glGenTextures(1, &textureID);
+    glBindTexture(GL_TEXTURE_2D, textureID);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, width, height, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, textureID, 0);
+
+    glDrawBuffer(GL_NONE);
+    glReadBuffer(GL_NONE);
+
+    return textureID;
+}
+
+unsigned int CreateDepthBufferAttachment(int height, int width) {
+    unsigned int RBO;
+    glGenRenderbuffers(1, &RBO);
+    glBindRenderbuffer(GL_RENDERBUFFER, RBO);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, width, height);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, RBO);
+    return RBO;
+}
+
+unsigned int BindFrameBuffer(unsigned int FBO, int height, int width) {
+    glBindFramebuffer(GL_FRAMEBUFFER, FBO);
+}
+
+unsigned int CreateShadowBuffer(unsigned int shadowWidth, unsigned int shadowHeight, std::vector<unsigned int>& shadowMaps) {
+    unsigned int FBO;
+    glGenFramebuffers(1, &FBO);
+
+    glGenTextures(shadowMaps.size(), &shadowMaps[0]);
+
+    for (int i = 0 ; i < shadowMaps.size() ; i++) {
+        glBindTexture(GL_TEXTURE_2D, shadowMaps[i]);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, shadowWidth, shadowHeight, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, FBO);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, shadowMaps[0], 0);
+
+    glDrawBuffer(GL_NONE);
+    glReadBuffer(GL_NONE);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+
+    if (status != GL_FRAMEBUFFER_COMPLETE) {
+        std::cerr << status;
+        exit(1);
+    }
+
+    return FBO;
+}
+
+void BindShadowBuffer(unsigned int FBO, unsigned int shadowMap)
+{
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, FBO);
+    //glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, shadowMap, 0);
+}
+
+void BindShadowTexture(std::vector<unsigned  int> shadowMaps) {
+//    glActiveTexture(CASCACDE_SHADOW_TEXTURE_UNIT0);
+//    glBindTexture(GL_TEXTURE_2D, shadowMaps[0]);
+
+//    glActiveTexture(CASCACDE_SHADOW_TEXTURE_UNIT1);
+//    glBindTexture(GL_TEXTURE_2D, shadowMaps[1]);
+//
+//    glActiveTexture(CASCACDE_SHADOW_TEXTURE_UNIT2);
+//    glBindTexture(GL_TEXTURE_2D, shadowMaps[2]);
+}
+
+void CalculateCascades(std::vector<glm::mat4>& lightProjections, std::vector<float>& cascadePlanes, glm::mat4 cameraView,
+                       glm::mat4 lightView, int display_w, int display_h) {
+    float fov = glm::radians(45.0f);
+    float ar = (float) display_h / (float) display_w;
+    float tanH = glm::tan(fov / 2);
+    float tanV = glm::tan(fov * ar / 2);
+
+    glm::mat4 cameraInverse = glm::inverse(cameraView);
+
+    for (int i = 0; i < cascadePlanes.size() - 1; i++) {
+        float xNear = cascadePlanes[i] * tanH;
+        float xFar = cascadePlanes[i + 1] * tanH;
+        float yNear = cascadePlanes[i] * tanV;
+        float yFar = cascadePlanes[i + 1] * tanV;
+
+        glm::vec4 frustum[8] {
+                glm::vec4(xNear, yNear, cascadePlanes[i], 1.0),
+                glm::vec4(-xNear, yNear, cascadePlanes[i], 1.0),
+                glm::vec4(xNear, -yNear, cascadePlanes[i], 1.0),
+                glm::vec4(-xNear, -yNear, cascadePlanes[i], 1.0),
+
+                glm::vec4(xFar, yFar, cascadePlanes[i + 1], 1.0),
+                glm::vec4(-xFar, yFar, cascadePlanes[i + 1], 1.0),
+                glm::vec4(xFar, -yFar, cascadePlanes[i + 1], 1.0),
+                glm::vec4(-xFar, -yFar, cascadePlanes[i + 1], 1.0)
+        };
+
+        glm::vec4 lightFrustum[8];
+
+        float minX = std::numeric_limits<int>::max();
+        float maxX = std::numeric_limits<int>::min();
+        float minY = std::numeric_limits<int>::max();
+        float maxY = std::numeric_limits<int>::min();
+        float minZ = std::numeric_limits<int>::max();
+        float maxZ = std::numeric_limits<int>::min();
+
+        for (int j = 0; j < 8; j++) {
+            glm::vec4 worldCorner = cameraInverse * frustum[j];
+            lightFrustum[j] = lightView * worldCorner;
+            minX = std::min(minX, lightFrustum[j].x);
+            maxX = std::max(maxX, lightFrustum[j].x);
+            minY = std::min(minY, lightFrustum[j].y);
+            maxY = std::max(maxY, lightFrustum[j].y);
+            minZ = std::min(minZ, lightFrustum[j].z);
+            maxZ = std::max(maxZ, lightFrustum[j].z);
+        }
+
+        glm::mat4 lightProjection = glm::ortho(minX, maxX, minY, maxY, minZ, maxZ);
+        lightProjections.push_back(lightProjection);
+    }
+}
+

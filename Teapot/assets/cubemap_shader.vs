@@ -12,4 +12,5 @@ void main()
     TexCoords = in_position;
     vec4 pos = vec4(in_position, 1.0);
     gl_Position = VP * pos;
+    gl_ClipDistance[0] = 1;
 }

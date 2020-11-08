@@ -25,12 +25,12 @@ void main()
     vec3 sunColor = vec3(1, 1, 1) * 1;
     vec3 projectorColor = vec3(1, 1, 0);
     float sunAttenuation = 1;
-    float projectorAttenuation = 1;
+    float projectorAttenuation = 0.06;
 
     vec3 projectorRay = aPosition - projectorPosition;
-    float pointAngle = acos(dot(normalize(projectorRay), normalize(projectorDirection)));
+    float pointAngle = dot(normalize(projectorRay), normalize(projectorDirection));
     projectorAttenuation = 1.0 / (1.0 + projectorAttenuation * pow(length(projectorRay), 2));
-    if (pointAngle > projectorAngle) {
+    if (pointAngle < cos(projectorAngle)) {
         projectorAttenuation = 0;
     }
 
@@ -38,19 +38,14 @@ void main()
     vec3 sunDirection = normalize(sunPosition);
     vec3 sunDiffuse = max(dot(normalize(aNormal), sunDirection), 0.0) * in_diffuse * sunColor;
 
-    vec3 projectorAmbient = in_ambient * projectorColor;
-    vec3 projectorDiffuse = max(dot(normalize(aNormal), -normalize(projectorRay)), 0.0) * in_diffuse * projectorColor;
+    vec3 projectorDiffuse = in_diffuse * projectorColor;
 
     vec3 I = normalize(cameraPosition - aPosition);
 
     vec3 sunR = reflect(-sunDirection, normalize(aNormal));
     vec3 sunSpecular = pow(max(dot(I, sunR), 0.0), 16) * in_specular * sunColor;
 
-    vec3 projectorR = reflect(normalize(projectorRay), normalize(aNormal));
-    vec3 projectorSpecular = pow(max(dot(I, projectorR), 0.0), 16) * in_specular * projectorColor;
-
-    vec4 result = vec4(sunAmbient + projectorAmbient + sunDiffuse + sunSpecular +
-        projectorAttenuation * (projectorDiffuse + projectorSpecular), 1.0);
+    vec4 result = vec4(sunAmbient + sunDiffuse + sunSpecular, 1.0);
 
     o_frag_color = result * texture(texture_diffuse1, aTexCoords);
 }
