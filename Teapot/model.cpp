@@ -693,29 +693,13 @@ unsigned int CreateShadowBuffer(unsigned int shadowWidth, unsigned int shadowHei
     return FBO;
 }
 
-void BindShadowBuffer(unsigned int FBO, unsigned int shadowMap)
-{
-    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, FBO);
-    //glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, shadowMap, 0);
-}
-
-void BindShadowTexture(std::vector<unsigned  int> shadowMaps) {
-//    glActiveTexture(CASCACDE_SHADOW_TEXTURE_UNIT0);
-//    glBindTexture(GL_TEXTURE_2D, shadowMaps[0]);
-
-//    glActiveTexture(CASCACDE_SHADOW_TEXTURE_UNIT1);
-//    glBindTexture(GL_TEXTURE_2D, shadowMaps[1]);
-//
-//    glActiveTexture(CASCACDE_SHADOW_TEXTURE_UNIT2);
-//    glBindTexture(GL_TEXTURE_2D, shadowMaps[2]);
-}
-
 void CalculateCascades(std::vector<glm::mat4>& lightProjections, std::vector<float>& cascadePlanes, glm::mat4 cameraView,
-                       glm::mat4 lightView, int display_w, int display_h) {
-    float fov = glm::radians(45.0f);
-    float ar = (float) display_h / (float) display_w;
-    float tanH = glm::tan(fov / 2);
-    float tanV = glm::tan(fov * ar / 2);
+                       glm::mat4 lightView, int display_w, int display_h, glm::vec3 cameraPos, glm::vec3 cameraDir) {
+    float fovV = glm::radians(45.0f);
+    float ar = (float) display_w / (float) display_h;
+    float fovH  = glm::atan(glm::tan(fovV / 2) * ar) * 2;
+    float tanV = glm::tan(fovV / 2);
+    float tanH = glm::tan(fovH / 2);
 
     glm::mat4 cameraInverse = glm::inverse(cameraView);
 
@@ -726,25 +710,25 @@ void CalculateCascades(std::vector<glm::mat4>& lightProjections, std::vector<flo
         float yFar = cascadePlanes[i + 1] * tanV;
 
         glm::vec4 frustum[8] {
-                glm::vec4(xNear, yNear, cascadePlanes[i], 1.0),
-                glm::vec4(-xNear, yNear, cascadePlanes[i], 1.0),
-                glm::vec4(xNear, -yNear, cascadePlanes[i], 1.0),
-                glm::vec4(-xNear, -yNear, cascadePlanes[i], 1.0),
+                glm::vec4(xNear, yNear, -cascadePlanes[i], 1.0),
+                glm::vec4(-xNear, yNear, -cascadePlanes[i], 1.0),
+                glm::vec4(xNear, -yNear, -cascadePlanes[i], 1.0),
+                glm::vec4(-xNear, -yNear, -cascadePlanes[i], 1.0),
 
-                glm::vec4(xFar, yFar, cascadePlanes[i + 1], 1.0),
-                glm::vec4(-xFar, yFar, cascadePlanes[i + 1], 1.0),
-                glm::vec4(xFar, -yFar, cascadePlanes[i + 1], 1.0),
-                glm::vec4(-xFar, -yFar, cascadePlanes[i + 1], 1.0)
+                glm::vec4(xFar, yFar, -cascadePlanes[i + 1], 1.0),
+                glm::vec4(-xFar, yFar, -cascadePlanes[i + 1], 1.0),
+                glm::vec4(xFar, -yFar, -cascadePlanes[i + 1], 1.0),
+                glm::vec4(-xFar, -yFar, -cascadePlanes[i + 1], 1.0)
         };
 
         glm::vec4 lightFrustum[8];
 
-        float minX = std::numeric_limits<int>::max();
-        float maxX = std::numeric_limits<int>::min();
-        float minY = std::numeric_limits<int>::max();
-        float maxY = std::numeric_limits<int>::min();
-        float minZ = std::numeric_limits<int>::max();
-        float maxZ = std::numeric_limits<int>::min();
+        float minX = 1000;
+        float maxX = -1000;
+        float minY = 1000;
+        float maxY = -1000;
+        float minZ = 1000;
+        float maxZ = -1000;
 
         for (int j = 0; j < 8; j++) {
             glm::vec4 worldCorner = cameraInverse * frustum[j];
@@ -757,8 +741,8 @@ void CalculateCascades(std::vector<glm::mat4>& lightProjections, std::vector<flo
             maxZ = std::max(maxZ, lightFrustum[j].z);
         }
 
-        glm::mat4 lightProjection = glm::ortho(minX, maxX, minY, maxY, minZ, maxZ);
-        lightProjections.push_back(lightProjection);
+        glm::mat4 lightProjection = glm::ortho(minX, maxX, minY, maxY, 1.0f, 24.0f);
+        lightProjections[i] = lightProjection;
     }
 }
 

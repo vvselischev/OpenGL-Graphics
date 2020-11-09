@@ -3,7 +3,6 @@
 out vec4 o_frag_color;
 
 in vec3 aPosition;
-//in vec3 aNormal;
 in vec2 aTexCoords;
 in vec4 aLightPosition1;
 in vec4 aLightPosition2;
@@ -37,9 +36,9 @@ float get_shadow(int i, vec3 aLightPosition, vec3 aNormal, vec3 sunDirection) {
     if (i == 1) {
         closestDepth = texture(shadowMap1, projCoords.xy).r;
     } else if (i == 2) {
-        closestDepth = texture(shadowMap1, projCoords.xy).r;
+        closestDepth = texture(shadowMap2, projCoords.xy).r;
     } else if (i == 3) {
-        closestDepth = texture(shadowMap1, projCoords.xy).r;
+        closestDepth = texture(shadowMap3, projCoords.xy).r;
     }
 
     float currentDepth = projCoords.z;
@@ -61,11 +60,11 @@ float get_shadow(int i, vec3 aLightPosition, vec3 aNormal, vec3 sunDirection) {
         {
             float pcfDepth = 0;
             if (i == 1) {
-                texture(shadowMap1, projCoords.xy + vec2(x, y) * texelSize).r;
+                pcfDepth =texture(shadowMap1, projCoords.xy + vec2(x, y) * texelSize).r;
             } else if (i == 2) {
-                texture(shadowMap2, projCoords.xy + vec2(x, y) * texelSize).r;
+                pcfDepth = texture(shadowMap2, projCoords.xy + vec2(x, y) * texelSize).r;
             } else if (i == 3) {
-                texture(shadowMap3, projCoords.xy + vec2(x, y) * texelSize).r;
+               pcfDepth = texture(shadowMap3, projCoords.xy + vec2(x, y) * texelSize).r;
             }
             shadow += currentDepth - bias > pcfDepth  ? 1.0 : 0.0;
         }

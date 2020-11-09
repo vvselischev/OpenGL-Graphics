@@ -50,9 +50,6 @@ const int REFLECTION_HEIGHT = 720;
 const int REFRACTION_WIDTH = 1280;
 const int REFRACTION_HEIGHT = 720;
 
-const int SHADOW_WIDTH = 2048;
-const int SHADOW_HEIGHT = 2048;
-
 
 void CleanUp() {
     glDeleteFramebuffers(1, &reflectionFrameBuffer);
@@ -195,8 +192,8 @@ int main(int, char **) {
     scene.boat.position = boatCentre + boatStartRadius;
     glm::vec3 boatDir = glm::vec3(1, 0, 0);
 
-    scene.cameraPos = glm::vec3(1, 0.8, 1);
-    scene.cameraDir = glm::vec3(1, 0, 0);
+    scene.cameraPos = glm::vec3(-9, 0.8, -9);
+    scene.cameraDir = glm::vec3(-1, 0, 0);
 
     DirectionalLight sun;
     sun.direction = glm::vec4(-1, 0.8, -1, 0.0);
@@ -218,13 +215,13 @@ int main(int, char **) {
     InitRefractionFrameBuffer();
 
     std::vector<float> planes {
-            1.0, 4.0, 10.0, 24.0
+            0.1, 15.0, 40.0, 100.0
     };
 
     std::vector<std::pair<int, int>> resolutions {
-            {1024, 1024},
+            {2048, 2048},
             {512, 512},
-            {256, 256}
+            {128, 128}
     };
 
     for (int i = 0; i < 3; i++) {
@@ -240,11 +237,6 @@ int main(int, char **) {
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
-
-        ImGui::Begin("Teapot");
-        ImGui::SliderFloat("ratio", &ratio, 1, 8);
-        shouldProcessMouse = !ImGui::IsWindowFocused();
-        ImGui::End();
 
         if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
             scene.cameraPos += scene.cameraDir * cameraVelocity;
@@ -280,8 +272,8 @@ int main(int, char **) {
         std::vector<glm::mat4> lightProjections;
         std::vector<glm::mat4> lightSpaceMatrices;
         for (int i = 0; i < 3; i++) {
-            lightSpaceMatrices.push_back(glm::mat4(1.0));
-            lightProjections.push_back(glm::mat4(1.0));
+            lightSpaceMatrices.push_back(glm::mat4(0.0));
+            lightProjections.push_back(glm::mat4(0.0));
         }
 
         scene.shadowDepthTextures = shadowDepthTextures;
@@ -358,28 +350,24 @@ int main(int, char **) {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glDisable(GL_CLIP_DISTANCE0);
 
-//        float nearPlane = 1.0f, farPlane = 24.0f;
-//        glm::mat4 lightProjection = glm::ortho(-10.0f, 10.0f, -10.0f, 10.0f, nearPlane, farPlane);
-        glm::mat4 lightView = glm::lookAt(scene.projector.position + glm::vec3(0,-7,0) + 10.0f * glm::vec3(scene.sun.direction.x, scene.sun.direction.y, scene.sun.direction.z),
+        float nearPlane = 1.0f, farPlane = 24.0f;
+        glm::mat4 lightView = glm::lookAt(glm::vec3(0,-1,0) + 10.0f * glm::vec3(scene.sun.direction.x, scene.sun.direction.y, scene.sun.direction.z),
                                           glm::vec3(0.0f, 0.0f,  0.0f),
                                           glm::vec3(0.0f, 1.0f,  0.0f));
 
-
-
-        CalculateCascades(lightProjections, planes, scene.View, lightView, display_w, display_h);
+        CalculateCascades(lightProjections, planes, scene.View, lightView, display_w, display_h, scene.cameraPos, scene.cameraDir);
 
         glm::mat4 oldView = scene.View;
         glm::mat4 oldProjection = scene.Projection;
 
         for (int i = 0; i < 3; i++) {
-
             glViewport(0, 0, resolutions[i].first, resolutions[i].second);
             glBindFramebuffer(GL_FRAMEBUFFER, shadowFrameBuffers[i]);
             glClear(GL_DEPTH_BUFFER_BIT);
 
             scene.View = lightView;
             scene.Projection = lightProjections[i];
-            lightSpaceMatrices.push_back(scene.Projection * scene.View);
+            lightSpaceMatrices[i] = scene.Projection * scene.View;
 
             scene.DrawScene();
 
@@ -411,7 +399,7 @@ int main(int, char **) {
 
         glActiveTexture(GL_TEXTURE0);
         waterShader.set_uniform("reflection_texture", 0);
-        glBindTexture(GL_TEXTURE_2D, reflectionTexture);
+        glBindTexture(GL_TEXTURE_2D, shadowDepthTextures[0]);
         glActiveTexture(GL_TEXTURE0 + 1);
         waterShader.set_uniform("refraction_texture", 1);
         glBindTexture(GL_TEXTURE_2D, scene.landscape.mesh.textures[0].id);

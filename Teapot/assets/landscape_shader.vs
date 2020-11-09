@@ -2,8 +2,6 @@
 
 layout (location = 0)
 in vec3 in_position;
-//layout (location = 1)
-//in vec2 in_normal;
 layout (location = 1)
 in vec2 in_texcoords;
 
@@ -28,7 +26,6 @@ out float z;
 void main()
 {
     aTexCoords = in_texcoords;
-    //aNormal = in_normal;
     vec4 pos = vec4(in_position, 1.0);
     aPosition = in_position;
     vec4 modelPosition = model * pos;

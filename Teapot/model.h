@@ -126,10 +126,10 @@ public:
         landscapeShader.set_uniform("shadowMap1", 3);
         glBindTexture(GL_TEXTURE_2D, shadowDepthTextures[0]);
         glActiveTexture(GL_TEXTURE0 + 4);
-        landscapeShader.set_uniform("shadowMap1", 4);
+        landscapeShader.set_uniform("shadowMap2", 4);
         glBindTexture(GL_TEXTURE_2D, shadowDepthTextures[1]);
         glActiveTexture(GL_TEXTURE0 + 5);
-        landscapeShader.set_uniform("shadowMap1", 5);
+        landscapeShader.set_uniform("shadowMap3", 5);
         glBindTexture(GL_TEXTURE_2D, shadowDepthTextures[2]);
 
         DrawLandscape(landscape, landscapeShader);
@@ -229,8 +229,6 @@ unsigned int CreateDepthBufferAttachment(int height, int width);
 unsigned int BindFrameBuffer(unsigned int FBO, int height, int width);
 
 unsigned int CreateShadowBuffer(unsigned int shadowWidth, unsigned int shadowHeight, std::vector<unsigned int>& shadowMaps);
-void BindShadowBuffer(unsigned int FBO, unsigned int shadowMap);
-void BindShadowTexture(std::vector<unsigned  int> shadowMaps);
 
 void CalculateCascades(std::vector<glm::mat4>& lightOrtos, std::vector<float>& cascadePlanes, glm::mat4 cameraView,
-                       glm::mat4 lightView, int display_w, int display_h);
+                       glm::mat4 lightView, int display_w, int display_h, glm::vec3 cameraPos, glm::vec3 cameraDir);
