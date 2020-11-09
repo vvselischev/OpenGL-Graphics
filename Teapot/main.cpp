@@ -215,13 +215,13 @@ int main(int, char **) {
     InitRefractionFrameBuffer();
 
     std::vector<float> planes {
-            0.1, 15.0, 40.0, 100.0
+            0.1, 15.0, 30.0, 100.0
     };
 
     std::vector<std::pair<int, int>> resolutions {
             {2048, 2048},
-            {512, 512},
-            {128, 128}
+            {1024, 1024},
+            {256, 256}
     };
 
     for (int i = 0; i < 3; i++) {
@@ -399,7 +399,7 @@ int main(int, char **) {
 
         glActiveTexture(GL_TEXTURE0);
         waterShader.set_uniform("reflection_texture", 0);
-        glBindTexture(GL_TEXTURE_2D, shadowDepthTextures[0]);
+        glBindTexture(GL_TEXTURE_2D, reflectionTexture);
         glActiveTexture(GL_TEXTURE0 + 1);
         waterShader.set_uniform("refraction_texture", 1);
         glBindTexture(GL_TEXTURE_2D, scene.landscape.mesh.textures[0].id);

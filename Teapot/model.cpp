@@ -741,7 +741,11 @@ void CalculateCascades(std::vector<glm::mat4>& lightProjections, std::vector<flo
             maxZ = std::max(maxZ, lightFrustum[j].z);
         }
 
-        glm::mat4 lightProjection = glm::ortho(minX, maxX, minY, maxY, 1.0f, 24.0f);
+        if (minZ > 0.0f)
+            minZ = 0.0f;
+        if (maxZ > 0.0f)
+            maxZ = 0.0f;
+        glm::mat4 lightProjection = glm::ortho(minX, maxX, minY, maxY, -maxZ, -minZ);
         lightProjections[i] = lightProjection;
     }
 }
