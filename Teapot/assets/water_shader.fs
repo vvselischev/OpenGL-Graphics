@@ -23,7 +23,7 @@ uniform vec3 cameraPosition;
 
 void main()
 {
-    float specularStrength = 0.6;
+    float specularStrength = 9.0;
     float windStrength = 0.02;
 
     vec2 ndc = (aClipCoords.xy / aClipCoords.w) / 2.0 + 0.5;
@@ -40,20 +40,20 @@ void main()
 
     float ambientStrength = 0.8;
     vec3 sunColor = vec3(1, 1, 1) ;
-    vec3 projectorColor = vec3(1, 1, 1);
+    vec3 projectorColor = vec3(0.3, 0.3, 0.3);
     float sunAttenuation = 1;
     float projectorAttenuation = 0.06;
     float projectorAmbient = 0.4;
 
     vec3 projectorRay = aPosition - projectorPosition;
     float pointAngle = dot(normalize(projectorRay), normalize(projectorDirection));
-    projectorAttenuation = 1.0 / (1.0 + projectorAttenuation * pow(length(projectorRay), 2));
+    projectorAttenuation = 1.0 / (1.0 + projectorAttenuation * pow(length(projectorRay), 3));
     if (pointAngle < cos(projectorAngle)) {
         projectorAttenuation = 0;
     }
 
     vec3 sunAmbient = ambientStrength * sunColor;
-    vec3 sunDirection = vec3(-1, 0.5, -1);
+    vec3 sunDirection = normalize(vec3(-15, 0.6, -20));
     vec3 sunDiffuse = max(dot(normalize(aNormal), sunDirection), 0.0) * sunColor;
 
     vec3 projectorDiffuse = projectorColor;
@@ -73,7 +73,7 @@ void main()
     R2 = clamp(R2, 0.001, 0.999);
 
     vec3 sunR = reflect(-sunDirection, normalize(aNormal));
-    vec3 sunSpecular = pow(max(dot(I, sunR), 0.0), 20) * specularStrength * sunColor;
+    vec3 sunSpecular = pow(max(dot(I, sunR), 0.0), 10) * specularStrength * sunColor;
 
     vec3 result = clamp(sunAmbient + sunDiffuse + projectorAttenuation * projectorDiffuse, 0.0, 1.0);
 

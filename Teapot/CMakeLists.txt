@@ -42,7 +42,8 @@ add_executable( opengl-imgui-sample
         assets/water_shader.vs
         assets/water_shader.fs
         assets/landscape_shader.vs
-        assets/landscape_shader.fs)
+        assets/landscape_shader.fs
+        assets/empty_shader.fs)
 
 add_custom_command(TARGET opengl-imgui-sample
     POST_BUILD
@@ -56,7 +57,8 @@ add_custom_command(TARGET opengl-imgui-sample
         COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_SOURCE_DIR}/assets/water_shader.fs ${PROJECT_BINARY_DIR}
         COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_SOURCE_DIR}/assets/landscape_shader.vs ${PROJECT_BINARY_DIR}
         COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_SOURCE_DIR}/assets/landscape_shader.fs ${PROJECT_BINARY_DIR}
-)
+        COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_SOURCE_DIR}/assets/empty_shader.fs ${PROJECT_BINARY_DIR}
+        )
 
 target_compile_definitions(opengl-imgui-sample PUBLIC IMGUI_IMPL_OPENGL_LOADER_GLEW)
 target_link_libraries(opengl-imgui-sample imgui::imgui GLEW::glew_s glfw::glfw fmt::fmt glm::glm)

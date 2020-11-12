@@ -84,6 +84,8 @@ public:
     shader_t cubemapShader;
     shader_t simpleShader;
     shader_t landscapeShader;
+    shader_t landscapeShaderShadow;
+    shader_t modelShaderShadow;
 
     glm::vec3 cameraPos;
     glm::vec3 cameraDir;
@@ -162,7 +164,6 @@ public:
         glDrawArrays(GL_TRIANGLES, 0, 36);
         glBindVertexArray(0);
 
-        //worldModel = glm::translate(worldModel, glm::vec3(0, -0.75, 0));
         worldModel = glm::translate(worldModel, -projector.position);
 
         glm::mat4 cubemapView = glm::mat4(glm::mat3(View));
@@ -188,6 +189,52 @@ public:
         modelShader.set_uniform("waterNormal", waterNormal);
         modelShader.set_uniform("cameraPosition", cameraPos.x, cameraPos.y, cameraPos.z);
         DrawModel(boat, modelShader);
+        worldModel = glm::rotate(worldModel, -3.1415f, glm::vec3(0.0, 1.0, 0.0));
+        worldModel = glm::rotate(worldModel, -boatRotation - 3.1415f / 2, glm::vec3(0.0, 1.0, 0.0));
+        worldModel = glm::translate(worldModel, glm::vec3(0, 0.07, 0));
+        worldModel = glm::translate(worldModel, -boat.position);
+    }
+
+    void DrawShadows() {
+        landscapeShaderShadow.use();
+        worldModel = glm::translate(worldModel, glm::vec3(0, -0.05, 0));
+        landscapeShaderShadow.set_uniform("model", glm::value_ptr(worldModel));
+        landscapeShaderShadow.set_uniform("view", glm::value_ptr(View));
+        landscapeShaderShadow.set_uniform("projection", glm::value_ptr(Projection));
+
+        DrawLandscape(landscape, landscapeShaderShadow);
+        worldModel = glm::translate(worldModel, glm::vec3(0, 0.05, 0));
+
+        modelShaderShadow.use();
+        worldModel = glm::translate(worldModel, lighthouse.position);
+        modelShaderShadow.set_uniform("model", glm::value_ptr(worldModel));
+        modelShaderShadow.set_uniform("view", glm::value_ptr(View));
+        modelShaderShadow.set_uniform("projection", glm::value_ptr(Projection));
+
+        DrawModel(lighthouse, modelShaderShadow);
+        worldModel = glm::translate(worldModel, -lighthouse.position);
+
+        simpleShader.use();
+        glBindVertexArray(cube);
+        worldModel = glm::translate(worldModel, projector.position);
+        simpleShader.set_uniform("model", glm::value_ptr(worldModel));
+        simpleShader.set_uniform("view", glm::value_ptr(View));
+        simpleShader.set_uniform("projection", glm::value_ptr(Projection));
+        glDrawArrays(GL_TRIANGLES, 0, 36);
+        glBindVertexArray(0);
+
+        worldModel = glm::translate(worldModel, -projector.position);
+
+        worldModel = glm::translate(worldModel, glm::vec3(0, -0.07, 0));
+        worldModel = glm::translate(worldModel, boat.position);
+        worldModel = glm::rotate(worldModel, 3.1415f, glm::vec3(0.0, 1.0, 0.0));
+        worldModel = glm::rotate(worldModel, boatRotation + 3.1415f / 2, glm::vec3(0.0, 1.0, 0.0));
+        modelShaderShadow.use();
+        modelShaderShadow.set_uniform("model", glm::value_ptr(worldModel));
+        modelShaderShadow.set_uniform("view", glm::value_ptr(View));
+        modelShaderShadow.set_uniform("projection", glm::value_ptr(Projection));
+
+        DrawModel(boat, modelShaderShadow);
         worldModel = glm::rotate(worldModel, -3.1415f, glm::vec3(0.0, 1.0, 0.0));
         worldModel = glm::rotate(worldModel, -boatRotation - 3.1415f / 2, glm::vec3(0.0, 1.0, 0.0));
         worldModel = glm::translate(worldModel, glm::vec3(0, 0.07, 0));
@@ -231,4 +278,7 @@ unsigned int BindFrameBuffer(unsigned int FBO, int height, int width);
 unsigned int CreateShadowBuffer(unsigned int shadowWidth, unsigned int shadowHeight, std::vector<unsigned int>& shadowMaps);
 
 void CalculateCascades(std::vector<glm::mat4>& lightOrtos, std::vector<float>& cascadePlanes, glm::mat4 cameraView,
-                       glm::mat4 lightView, int display_w, int display_h, glm::vec3 cameraPos, glm::vec3 cameraDir);
+                       glm::mat4 lightView, int display_w, int display_h, float displayAngle);
+
+
+glm::mat4 CalculateOblique(glm::mat4 cameraProjection, glm::vec4 plane);

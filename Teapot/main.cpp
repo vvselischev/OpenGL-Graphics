@@ -115,24 +115,24 @@ int main(int, char **) {
 
     std::vector <std::string> faces
             {
-                    "../assets/bluecloud_ft.jpg",
-                    "../assets/bluecloud_bk.jpg",
-                    "../assets/bluecloud_up.jpg",
-                    "../assets/bluecloud_dn.jpg",
-                    "../assets/bluecloud_rt.jpg",
-                    "../assets/bluecloud_lf.jpg"
+                    "../assets/C.jpg",
+                    "../assets/A.jpg",
+                    "../assets/up.jpg",
+                    "../assets/down.jpg",
+                    "../assets/B.jpg",
+                    "../assets/D.jpg"
             };
 
     Cubemap cubemap;
     cubemap.texture = LoadCubemapTexture(faces);
-    cubemap.VAO = LoadCubeVertices(40.0f);
+    cubemap.VAO = LoadCubeVertices(100.0f);
     scene.cubemap = cubemap;
 
     Mesh water;
     LoadWater(water, "../assets/water.jpg",
               "../assets/water_normal.jpg",
               "../assets/water_dudv.png",
-              60.0, 6.0);
+              100.0, 6.0);
 
     Landscape landscape;
     float scale = 20;
@@ -156,10 +156,14 @@ int main(int, char **) {
     shader_t simpleShader("simple_shader.vs", "simple_shader.fs");
     shader_t waterShader("water_shader.vs", "water_shader.fs");
     shader_t landscapeShader("landscape_shader.vs", "landscape_shader.fs");
+    shader_t landscapeShaderShadow("landscape_shader.vs", "empty_shader.fs");
+    shader_t modelShaderShadow("model_shader.vs", "empty_shader.fs");
     scene.modelShader = modelShader;
     scene.cubemapShader = cubemapShader;
     scene.simpleShader = simpleShader;
     scene.landscapeShader = landscapeShader;
+    scene.landscapeShaderShadow = landscapeShaderShadow;
+    scene.modelShaderShadow = modelShaderShadow;
 
     // Setup GUI context
     IMGUI_CHECKVERSION();
@@ -179,7 +183,7 @@ int main(int, char **) {
     float windFactor = 0.0f;
     float waterLevel = 0.0f;
     float boatVelocity = 0.25f;
-    float cameraVelocity = 0.1;
+    float cameraVelocity = 0.05;
     float cameraRotationUpVelocity = 0.04;
     float projectorVelocity = 0.04f;
     bool dragging = false;
@@ -192,11 +196,11 @@ int main(int, char **) {
     scene.boat.position = boatCentre + boatStartRadius;
     glm::vec3 boatDir = glm::vec3(1, 0, 0);
 
-    scene.cameraPos = glm::vec3(-9, 0.8, -9);
-    scene.cameraDir = glm::vec3(-1, 0, 0);
+    scene.cameraPos = glm::vec3(-14, 1.425, -11.53);
+    scene.cameraDir = glm::vec3(-0.516, 0.1, 1.17);
 
     DirectionalLight sun;
-    sun.direction = glm::vec4(-1, 0.8, -1, 0.0);
+    sun.direction = glm::vec4(-1, 0.6, 1, 0.0);
     scene.sun = sun;
 
     Spotlight projector;
@@ -215,7 +219,7 @@ int main(int, char **) {
     InitRefractionFrameBuffer();
 
     std::vector<float> planes {
-            0.1, 15.0, 30.0, 100.0
+            0.1, 15.0, 30.0, 200.0
     };
 
     std::vector<std::pair<int, int>> resolutions {
@@ -240,8 +244,22 @@ int main(int, char **) {
 
         if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
             scene.cameraPos += scene.cameraDir * cameraVelocity;
+        if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
+            glm::mat4 rotationMat(1);
+            rotationMat = glm::rotate(rotationMat, glm::radians(90.0f), glm::vec3(0.0, 1.0, 0.0));
+            glm::vec3 left = glm::vec3(rotationMat * glm::vec4(scene.cameraDir, 1.0));
+            left.y = 0;
+            scene.cameraPos += left * cameraVelocity;
+        }
         if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
             scene.cameraPos -= scene.cameraDir * cameraVelocity;
+        if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
+            glm::mat4 rotationMat(1);
+            rotationMat = glm::rotate(rotationMat, glm::radians(-90.0f), glm::vec3(0.0, 1.0, 0.0));
+            glm::vec3 right = glm::vec3(rotationMat * glm::vec4(scene.cameraDir, 1.0));
+            right.y = 0;
+            scene.cameraPos += right * cameraVelocity;
+        }
         if (glfwGetKey(window, GLFW_KEY_LEFT) == GLFW_PRESS) {
             glm::mat4 rotationMat(1);
             rotationMat = glm::rotate(rotationMat, cameraVelocity, glm::vec3(0.0, 1.0, 0.0));
@@ -285,8 +303,9 @@ int main(int, char **) {
 
         // Set viewport to fill the whole window area
         glViewport(0, 0, display_w, display_h);
-
-        scene.Projection = glm::perspective(glm::radians(45.0f), (float) display_w / (float) display_h, 0.1f, 100.0f);
+        float fov = glm::radians(45.0f);
+        glm::mat4 Projection = glm::perspective(fov, (float) display_w / (float) display_h, 0.1f, 200.0f);
+        scene.Projection = Projection;
         scene.worldModel = glm::mat4(1.0f);
         scene.View = glm::lookAt(
                 scene.cameraPos,
@@ -326,6 +345,10 @@ int main(int, char **) {
                 scene.cameraDir + scene.cameraPos,
                 glm::vec3(0, 1, 0)
         );
+
+        glm::mat4 oldProjection = scene.Projection;
+        glm::vec4 waterPlane = glm::vec4(0, 1, 0, -waterLevel);
+        Projection = CalculateOblique(oldProjection, scene.View * waterPlane);
         scene.waterNormal = 1.0f;
         scene.DrawScene();
         scene.cameraPos.y += 2 * cameraToWaterDistance;
@@ -335,6 +358,7 @@ int main(int, char **) {
                 scene.cameraDir + scene.cameraPos,
                 glm::vec3(0, 1, 0)
         );
+        scene.Projection = oldProjection;
 
         glBindFramebuffer(GL_FRAMEBUFFER, refractionFrameBuffer);
 
@@ -355,10 +379,10 @@ int main(int, char **) {
                                           glm::vec3(0.0f, 0.0f,  0.0f),
                                           glm::vec3(0.0f, 1.0f,  0.0f));
 
-        CalculateCascades(lightProjections, planes, scene.View, lightView, display_w, display_h, scene.cameraPos, scene.cameraDir);
+        CalculateCascades(lightProjections, planes, scene.View, lightView, display_w, display_h, fov);
 
         glm::mat4 oldView = scene.View;
-        glm::mat4 oldProjection = scene.Projection;
+        oldProjection = scene.Projection;
 
         for (int i = 0; i < 3; i++) {
             glViewport(0, 0, resolutions[i].first, resolutions[i].second);
@@ -369,7 +393,7 @@ int main(int, char **) {
             scene.Projection = lightProjections[i];
             lightSpaceMatrices[i] = scene.Projection * scene.View;
 
-            scene.DrawScene();
+            scene.DrawShadows();
 
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
         }
@@ -390,7 +414,7 @@ int main(int, char **) {
         waterShader.set_uniform("view", glm::value_ptr(scene.View));
         waterShader.set_uniform("projection", glm::value_ptr(scene.Projection));
 
-        waterShader.set_uniform("sunPosition", sun.direction.x, sun.direction.y, sun.direction.z);
+        waterShader.set_uniform("sunPosition", sun.direction.x, sun.direction.y, -sun.direction.z);
         waterShader.set_uniform("projectorPosition", scene.projector.position.x, scene.projector.position.y, scene.projector.position.z);
         waterShader.set_uniform("projectorDirection", scene.projector.direction.x, scene.projector.direction.y, scene.projector.direction.z);
         waterShader.set_uniform("projectorAngle", projector.angle);

@@ -90,7 +90,7 @@ void main()
 
     vec3 projectorRay = aPosition - projectorPosition;
     float pointAngle = dot(normalize(projectorRay), normalize(projectorDirection));
-    projectorAttenuation = 1.0 / (1.0 + projectorAttenuation * pow(length(projectorRay), 2));
+    projectorAttenuation = 1.0 / (1.0 + projectorAttenuation * pow(length(projectorRay), 3));
     if (pointAngle < cos(projectorAngle)) {
         projectorAttenuation = 0;
     }

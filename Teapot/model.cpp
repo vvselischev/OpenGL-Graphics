@@ -34,6 +34,10 @@ bool FileExists(const std::string& abs_filename) {
     return ret;
 }
 
+template <typename T> int sgn(T val) {
+    return (T(0) < val) - (val < T(0));
+}
+
 void LoadTexture(Model& model,
                  std::string& texture_filename,
                  const std::string& texture_type,
@@ -694,8 +698,8 @@ unsigned int CreateShadowBuffer(unsigned int shadowWidth, unsigned int shadowHei
 }
 
 void CalculateCascades(std::vector<glm::mat4>& lightProjections, std::vector<float>& cascadePlanes, glm::mat4 cameraView,
-                       glm::mat4 lightView, int display_w, int display_h, glm::vec3 cameraPos, glm::vec3 cameraDir) {
-    float fovV = glm::radians(45.0f);
+                       glm::mat4 lightView, int display_w, int display_h, float displayAngle) {
+    float fovV = displayAngle;
     float ar = (float) display_w / (float) display_h;
     float fovH  = glm::atan(glm::tan(fovV / 2) * ar) * 2;
     float tanV = glm::tan(fovV / 2);
@@ -745,8 +749,27 @@ void CalculateCascades(std::vector<glm::mat4>& lightProjections, std::vector<flo
             minZ = 0.0f;
         if (maxZ > 0.0f)
             maxZ = 0.0f;
-        glm::mat4 lightProjection = glm::ortho(minX, maxX, minY, maxY, -maxZ, -minZ);
+        glm::mat4 lightProjection = glm::ortho(minX - 1, maxX + 1, minY - 1, maxY + 1, -maxZ - 1, -minZ + 1);
         lightProjections[i] = lightProjection;
     }
 }
 
+glm::mat4 CalculateOblique(glm::mat4 cameraProjection, glm::vec4 plane) {
+    glm::mat4 inverse = glm::inverse(cameraProjection);
+    // glm::vec4 v = glm::vec4(sgn(plane.x), sgn(plane.y), 1.0f, 1.0f);
+    // glm::vec4 q = inverse *  v;
+    glm::vec4 q;
+    q.x = (sgn(plane.x) + cameraProjection[0][2]) / cameraProjection[0][0];
+    q.y = (sgn(plane.y) + cameraProjection[1][2]) / cameraProjection[1][1];
+    q.z = -1.0f;
+    q.w = (1.0f + cameraProjection[2][2]) / cameraProjection[2][3];
+    glm::vec4 c = plane * (2.0f / (glm::dot(plane, q)));
+
+    glm::mat4 result = cameraProjection;
+    result[2][0] = c.x;
+    result[2][1] = c.y;
+    result[2][2] = c.z + 1.0f;
+    result[2][3] = c.w;
+
+    return result;
+}
