@@ -756,13 +756,13 @@ void CalculateCascades(std::vector<glm::mat4>& lightProjections, std::vector<flo
 
 glm::mat4 CalculateOblique(glm::mat4 cameraProjection, glm::vec4 plane) {
     glm::mat4 inverse = glm::inverse(cameraProjection);
-    // glm::vec4 v = glm::vec4(sgn(plane.x), sgn(plane.y), 1.0f, 1.0f);
-    // glm::vec4 q = inverse *  v;
-    glm::vec4 q;
-    q.x = (sgn(plane.x) + cameraProjection[0][2]) / cameraProjection[0][0];
-    q.y = (sgn(plane.y) + cameraProjection[1][2]) / cameraProjection[1][1];
-    q.z = -1.0f;
-    q.w = (1.0f + cameraProjection[2][2]) / cameraProjection[2][3];
+     glm::vec4 v = glm::vec4(sgn(plane.x), sgn(plane.y), 1.0f, 1.0f);
+     glm::vec4 q = inverse *  v;
+//    glm::vec4 q;
+//    q.x = (sgn(plane.x) + cameraProjection[0][2]) / cameraProjection[0][0];
+//    q.y = (sgn(plane.y) + cameraProjection[1][2]) / cameraProjection[1][1];
+//    q.z = -1.0f;
+//    q.w = (1.0f + cameraProjection[2][2]) / cameraProjection[2][3];
     glm::vec4 c = plane * (2.0f / (glm::dot(plane, q)));
 
     glm::mat4 result = cameraProjection;

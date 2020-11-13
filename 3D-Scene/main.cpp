@@ -132,7 +132,7 @@ int main(int, char **) {
     LoadWater(water, "../assets/water.jpg",
               "../assets/water_normal.jpg",
               "../assets/water_dudv.png",
-              100.0, 6.0);
+              100.0, 60.0);
 
     Landscape landscape;
     float scale = 20;
@@ -179,10 +179,10 @@ int main(int, char **) {
     float ratio = 1.54;
     float clickedX = 0;
     float clickedY = 0;
-    float windVelocity = 0.00035f;
+    float windVelocity = 0.0006f;
     float windFactor = 0.0f;
     float waterLevel = 0.0f;
-    float boatVelocity = 0.25f;
+    float boatVelocity = 0.1f;
     float cameraVelocity = 0.05;
     float cameraRotationUpVelocity = 0.04;
     float projectorVelocity = 0.04f;
@@ -301,6 +301,16 @@ int main(int, char **) {
         int display_w, display_h;
         glfwGetFramebufferSize(window, &display_w, &display_h);
 
+        glm::mat4 rotationBoat(1);
+        rotationBoat = glm::rotate(rotationBoat, glm::radians(boatVelocity),
+                                   glm::vec3(0.0, 1.0, 0.0));
+        boatRadius = glm::vec3(rotationBoat * glm::vec4(boatRadius, 1.0));
+        scene.boatRotation = glm::atan(glm::dot(boatRadius, boatOrtoRadius), glm::dot(boatRadius, boatStartRadius));
+        scene.boat.position = boatCentre + boatRadius;
+
+        //scene.cameraPos = scene.boat.position;
+        //scene.cameraPos.y += 0.2f;
+
         // Set viewport to fill the whole window area
         glViewport(0, 0, display_w, display_h);
         float fov = glm::radians(45.0f);
@@ -312,13 +322,6 @@ int main(int, char **) {
                 scene.cameraDir + scene.cameraPos,
                 glm::vec3(0, 1, 0)
         );
-
-        glm::mat4 rotationBoat(1);
-        rotationBoat = glm::rotate(rotationBoat, glm::radians(boatVelocity),
-                                  glm::vec3(0.0, 1.0, 0.0));
-        boatRadius = glm::vec3(rotationBoat * glm::vec4(boatRadius, 1.0));
-        scene.boatRotation = glm::atan(glm::dot(boatRadius, boatOrtoRadius), glm::dot(boatRadius, boatStartRadius));
-        scene.boat.position = boatCentre + boatRadius;
 
         glm::mat4 rotationProjector(1);
         rotationProjector = glm::rotate(rotationProjector, projectorVelocity, glm::vec3(0.0, 1.0, 0.0));

@@ -89,6 +89,7 @@ public:
 
     glm::vec3 cameraPos;
     glm::vec3 cameraDir;
+    glm::vec3 cameraUp;
     float boatRotation;
 
     glm::mat4 Projection;

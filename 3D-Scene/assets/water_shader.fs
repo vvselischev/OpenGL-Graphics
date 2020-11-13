@@ -77,6 +77,6 @@ void main()
 
     vec3 result = clamp(sunAmbient + sunDiffuse + projectorAttenuation * projectorDiffuse, 0.0, 1.0);
 
-    o_frag_color = vec4(result * mix(vec4(texture(reflection_texture, R).rgb + sunSpecular, 1.0), vec4(0, 0.484, 0.610, 1.0), 0.2).xyz, 1.0);
+    o_frag_color = vec4(result * mix(vec4(texture(reflection_texture, R).rgb + sunSpecular, 1.0), vec4(0, 0.484, 0.610, 1.0), 0.4).xyz, 1.0);
     o_frag_color = clamp(o_frag_color, 0.0, 1.0);
 }
