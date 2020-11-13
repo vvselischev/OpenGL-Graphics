@@ -38,7 +38,7 @@ void main()
     vec3 aNormal = vec3(normalMap.x * 2.0 - 1.0, normalMap.y, normalMap.z * 2.0 - 1.0);
     aNormal = normalize(aNormal);
 
-    float ambientStrength = 0.8;
+    float ambientStrength = 0.6;
     vec3 sunColor = vec3(1, 1, 1) ;
     vec3 projectorColor = vec3(0.3, 0.3, 0.3);
     float sunAttenuation = 1;
@@ -54,7 +54,7 @@ void main()
 
     vec3 sunAmbient = ambientStrength * sunColor;
     vec3 sunDirection = normalize(vec3(-15, 0.6, -20));
-    vec3 sunDiffuse = max(dot(normalize(aNormal), sunDirection), 0.0) * sunColor;
+    vec3 sunDiffuse = max(dot(normalize(aNormal), normalize(vec3(1, 0.8, 1))), 0.0) * 0.5 * sunColor;
 
     vec3 projectorDiffuse = projectorColor;
 
@@ -77,6 +77,6 @@ void main()
 
     vec3 result = clamp(sunAmbient + sunDiffuse + projectorAttenuation * projectorDiffuse, 0.0, 1.0);
 
-    o_frag_color = vec4(result * mix(vec4(texture(reflection_texture, R).rgb + sunSpecular, 1.0), vec4(0, 0.484, 0.610, 1.0), 0.4).xyz, 1.0);
+    o_frag_color = vec4(result * mix(vec4(texture(reflection_texture, R).rgb + sunSpecular, 1.0), vec4(0, 87.0 / 256, 143.0 / 256, 1.0), 0.8).xyz, 1.0);
     o_frag_color = clamp(o_frag_color, 0.0, 1.0);
 }
