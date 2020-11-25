@@ -19,6 +19,8 @@ namespace {
     }
 }
 
+shader_t::shader_t() {}
+
 shader_t::shader_t(const std::string &vertex_code_fname, const std::string &fragment_code_fname) {
     const auto vertex_code = read_shader_code(vertex_code_fname);
     const auto fragment_code = read_shader_code(fragment_code_fname);

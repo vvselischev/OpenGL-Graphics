@@ -8,6 +8,7 @@
 class shader_t
 {
 public:
+   shader_t();
    shader_t(const std::string& vertex_code_fname, const std::string& fragment_code_fname);
    ~shader_t();
 
