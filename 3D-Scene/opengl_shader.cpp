@@ -84,6 +84,11 @@ void shader_t::set_uniform<float>(const std::string &name, float val1, float val
 }
 
 template<>
+void shader_t::set_uniform(const std::string& name, float val1, float val2, float val3, float val4) {
+    glUniform4f(glGetUniformLocation(program_id_, name.c_str()), val1, val2, val3, val4);
+}
+
+template<>
 void shader_t::set_uniform<float *>(const std::string &name, float *val) {
     glUniformMatrix4fv(glGetUniformLocation(program_id_, name.c_str()), 1, GL_FALSE, val);
 }

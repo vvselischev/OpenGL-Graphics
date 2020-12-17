@@ -34,46 +34,6 @@ void framebuffer_size_callback(GLFWwindow* window, int width, int height) {
     glViewport(0, 0, width, height);
 }
 
-unsigned int reflectionFrameBuffer;
-unsigned int reflectionTexture;
-unsigned int reflectionDepthBuffer;
-unsigned int refractionFrameBuffer;
-unsigned int refractionTexture;
-unsigned int refractionDepthTexture;
-
-std::vector<unsigned int> shadowFrameBuffers;
-std::vector<unsigned int> shadowDepthTextures;
-
-const int REFLECTION_WIDTH = 1280;
-const int REFLECTION_HEIGHT = 720;
-
-const int REFRACTION_WIDTH = 1280;
-const int REFRACTION_HEIGHT = 720;
-
-
-void CleanUp() {
-    glDeleteFramebuffers(1, &reflectionFrameBuffer);
-    glDeleteTextures(1, &reflectionTexture);
-    glDeleteRenderbuffers(1, &reflectionDepthBuffer);
-    glDeleteFramebuffers(1, &refractionFrameBuffer);
-    glDeleteTextures(1, &refractionTexture);
-    glDeleteTextures(1, &refractionDepthTexture);
-}
-
-void InitReflectionFrameBuffer() {
-    reflectionFrameBuffer = CreateFrameBuffer();
-    reflectionTexture = CreateTextureAttachment(REFLECTION_HEIGHT, REFLECTION_WIDTH);
-    reflectionDepthBuffer = CreateDepthBufferAttachment(REFLECTION_HEIGHT, REFLECTION_WIDTH);
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-}
-
-void InitRefractionFrameBuffer() {
-    refractionFrameBuffer = CreateFrameBuffer();
-    refractionTexture = CreateTextureAttachment(REFRACTION_HEIGHT, REFRACTION_WIDTH);
-    refractionDepthTexture = CreateDepthTextureAttachment(REFRACTION_HEIGHT, REFRACTION_WIDTH);
-}
-
-
 int main(int, char **) {
     // Use GLFW to create a simple window
     glfwSetErrorCallback(glfw_error_callback);
@@ -104,15 +64,6 @@ int main(int, char **) {
     glEnable(GL_DEPTH_TEST);
 
     Scene scene;
-
-    Model lighthouse;
-    LoadModel(lighthouse, "../assets/lighthouse/lighthouse.obj", "../assets/lighthouse/", 4);
-    scene.lighthouse = lighthouse;
-
-    Model boat;
-    LoadModel(boat, "../assets/boat/gondol.obj", "../assets/boat/", 10);
-    scene.boat = boat;
-
     std::vector <std::string> faces
             {
                     "../assets/C.jpg",
@@ -128,42 +79,19 @@ int main(int, char **) {
     cubemap.VAO = LoadCubeVertices(100.0f);
     scene.cubemap = cubemap;
 
-    Mesh water;
-    LoadWater(water, "../assets/water.jpg",
-              "../assets/water_normal.jpg",
-              "../assets/water_dudv.png",
-              100.0, 60.0);
-
-    Landscape landscape;
-    float scale = 20;
-    LoadLandscape(landscape, "../assets/terrain_heightmap.jpg",
-                  "../assets/sand_texture.jpg",
-                  "../assets/grass_texture.png",
-                  "../assets/rock_texture.jpg",
-                  1.5,
-                  50,
-                  0.2,
-                  0.5,
-                  scale);
-    scene.landscape = landscape;
-
-    scene.lighthouse.position = glm::vec3(-14, GetHeight(scene.landscape, 14, 7), -7);
+    Mesh plane;
+    LoadPlane(plane, "../assets/wall_texture.jpg",
+              "../assets/wall_normal.jpg",
+              "../assets/wall_height_old.png",
+              1, 1);
 
 
     // init shader
-    shader_t modelShader("model_shader.vs", "model_shader.fs");
     shader_t cubemapShader("cubemap_shader.vs", "cubemap_shader.fs");
     shader_t simpleShader("simple_shader.vs", "simple_shader.fs");
-    shader_t waterShader("water_shader.vs", "water_shader.fs");
-    shader_t landscapeShader("landscape_shader.vs", "landscape_shader.fs");
-    shader_t landscapeShaderShadow("landscape_shader.vs", "empty_shader.fs");
-    shader_t modelShaderShadow("model_shader.vs", "empty_shader.fs");
-    scene.modelShader = modelShader;
+    shader_t wallShader("wall_shader.vs", "wall_shader.fs");
     scene.cubemapShader = cubemapShader;
     scene.simpleShader = simpleShader;
-    scene.landscapeShader = landscapeShader;
-    scene.landscapeShaderShadow = landscapeShaderShadow;
-    scene.modelShaderShadow = modelShaderShadow;
 
     // Setup GUI context
     IMGUI_CHECKVERSION();
@@ -179,68 +107,88 @@ int main(int, char **) {
     float ratio = 1.54;
     float clickedX = 0;
     float clickedY = 0;
-    float windVelocity = 0.0006f;
-    float windFactor = 0.0f;
-    float waterLevel = 0.0f;
-    float boatVelocity = 0.1f;
-    float cameraVelocity = 0.05;
+    float cameraVelocity = 0.02;
     float cameraRotationUpVelocity = 0.04;
-    float projectorVelocity = 0.04f;
     bool dragging = false;
     bool shouldProcessMouse;
 
-    glm::vec3 boatCentre = glm::vec3(-10, 0, -10);
-    glm::vec3 boatRadius = glm::vec3(0, 0, 8.4);
-    glm::vec3 boatOrtoRadius = glm::vec3(8.4, 0, 0);
-    glm::vec3 boatStartRadius = boatRadius;
-    scene.boat.position = boatCentre + boatStartRadius;
-    glm::vec3 boatDir = glm::vec3(1, 0, 0);
+    float reflectivity = 200;
 
-    scene.cameraPos = glm::vec3(-14, 1.425, -11.53);
-    scene.cameraDir = glm::vec3(-0.516, 0.1, 1.17);
+    scene.cameraPos = glm::vec3(0, 3, 0);
+    scene.cameraDir = glm::vec3(0.2, -1, 0.2);
 
-    DirectionalLight sun;
-    sun.direction = glm::vec4(-1, 0.6, 1, 0.0);
-    scene.sun = sun;
+    DirectionalLight light1;
+    light1.direction = glm::vec3(-1, 0.3, -1);
 
-    Spotlight projector;
-    projector.angle = glm::radians(15.0f);
+    DirectionalLight light2;
+    light2.direction = glm::vec3(0, 0.4, 1);
 
-    projector.position = scene.lighthouse.position + glm::vec3(0, 0.75, 0);
-    projector.direction = glm::vec3(2, -0.5f, 0);
-    scene.projector = projector;
+    DirectionalLight light3;
+    light3.direction = glm::vec3(-1, 0.1, 0);
 
-    unsigned int cube = LoadCubeVertices(1/64.0f);
-    scene.cube = cube;
+    DirectionalLight light4;
+    light4.direction = glm::vec3(-1, 0.4, 1);
 
-    scene.waterLevel = waterLevel;
+    scene.cube = LoadCubeVertices(0.05);
 
-    InitReflectionFrameBuffer();
-    InitRefractionFrameBuffer();
+    float maxHeight = 0.006;
+    int maxStepCount = 90;
+    float stepLength = 0.0001;
+    int stepLengthRatio = 10;
+    float currentFrames = 0;
+    float currentTime = 0;
+    float fps = 0;
+    auto t1 = std::chrono::steady_clock::now();
 
-    std::vector<float> planes {
-            0.1, 15.0, 30.0, 200.0
-    };
-
-    std::vector<std::pair<int, int>> resolutions {
-            {2048, 2048},
-            {1024, 1024},
-            {256, 256}
-    };
-
-    for (int i = 0; i < 3; i++) {
-        shadowFrameBuffers.push_back(CreateFrameBuffer());
-        shadowDepthTextures.push_back(CreateDepthTextureAttachment(resolutions[i].second, resolutions[i].first));
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    }
-
-    scene.planes = planes;
 
     while (!glfwWindowShouldClose(window)) {
         // Gui start new frame
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplGlfw_NewFrame();
         ImGui::NewFrame();
+
+        ImGui::Begin("Parallax Occlusion");
+
+        ImGui::SliderFloat("Max height", &maxHeight, 0.0001, 0.01);
+        ImGui::SliderInt("Max step count", &maxStepCount, 2, 256);
+        ImGui::SliderInt("StepLength", &stepLengthRatio, 1, 10);
+
+        stepLength = (float) stepLengthRatio / 100000;
+
+        ImGui::SliderFloat("light1.x", &light1.direction.x, -4, 4);
+        ImGui::SliderFloat("light1.y", &light1.direction.y, 0, 2);
+        ImGui::SliderFloat("light1.z", &light1.direction.z, -4, 4);
+
+        ImGui::SliderFloat("light2.x", &light1.direction.x, -4, 4);
+        ImGui::SliderFloat("light2.y", &light1.direction.y, 0, 2);
+        ImGui::SliderFloat("light2.z", &light1.direction.z, -4, 4);
+
+        ImGui::SliderFloat("light3.x", &light3.direction.x, -4, 4);
+        ImGui::SliderFloat("light3.y", &light3.direction.y, 0, 2);
+        ImGui::SliderFloat("light3.z", &light3.direction.z, -4, 4);
+
+        ImGui::SliderFloat("light4.x", &light4.direction.x, -4, 4);
+        ImGui::SliderFloat("light4.y", &light4.direction.y, 0, 2);
+        ImGui::SliderFloat("light4.z", &light4.direction.z, -4, 4);
+
+
+        const char* items[] = { "PLAIN", "NORMAL BUMP", "POM", "POM & SHADOWS" };
+        static const char* current_item = items[3];
+
+        if (ImGui::BeginCombo("Mode", current_item)) {
+            for (int i = 0; i < 4; i++) {
+                bool is_selected = (current_item == items[i]);
+                if (ImGui::Selectable(items[i], is_selected)) {
+                    current_item = items[i];
+                }
+                if (is_selected) {
+                    ImGui::SetItemDefaultFocus();
+                }
+            }
+            ImGui::EndCombo();
+        }
+
+        ImGui::End();
 
         if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
             scene.cameraPos += scene.cameraDir * cameraVelocity;
@@ -287,34 +235,16 @@ int main(int, char **) {
             }
         }
 
-        std::vector<glm::mat4> lightProjections;
-        std::vector<glm::mat4> lightSpaceMatrices;
-        for (int i = 0; i < 3; i++) {
-            lightSpaceMatrices.push_back(glm::mat4(0.0));
-            lightProjections.push_back(glm::mat4(0.0));
-        }
-
-        scene.shadowDepthTextures = shadowDepthTextures;
-        scene.lightSpaceMatrices = lightSpaceMatrices;
-
         // Get windows size
         int display_w, display_h;
         glfwGetFramebufferSize(window, &display_w, &display_h);
 
-        glm::mat4 rotationBoat(1);
-        rotationBoat = glm::rotate(rotationBoat, glm::radians(boatVelocity),
-                                   glm::vec3(0.0, 1.0, 0.0));
-        boatRadius = glm::vec3(rotationBoat * glm::vec4(boatRadius, 1.0));
-        scene.boatRotation = glm::atan(glm::dot(boatRadius, boatOrtoRadius), glm::dot(boatRadius, boatStartRadius));
-        scene.boat.position = boatCentre + boatRadius;
-
-        //scene.cameraPos = scene.boat.position;
-        //scene.cameraPos.y += 0.2f;
-
         // Set viewport to fill the whole window area
         glViewport(0, 0, display_w, display_h);
         float fov = glm::radians(45.0f);
-        glm::mat4 Projection = glm::perspective(fov, (float) display_w / (float) display_h, 0.1f, 200.0f);
+        float near = 0.1f;
+        float far = 200.0f;
+        glm::mat4 Projection = glm::perspective(fov, (float) display_w / (float) display_h, near, far);
         scene.Projection = Projection;
         scene.worldModel = glm::mat4(1.0f);
         scene.View = glm::lookAt(
@@ -323,124 +253,84 @@ int main(int, char **) {
                 glm::vec3(0, 1, 0)
         );
 
-        glm::mat4 rotationProjector(1);
-        rotationProjector = glm::rotate(rotationProjector, projectorVelocity, glm::vec3(0.0, 1.0, 0.0));
-        scene.projector.direction = glm::vec3(rotationProjector * glm::vec4(scene.projector.direction, 1.0));
-
-        windFactor += windVelocity;
-        if (windFactor > 1.0) {
-            windFactor = 0;
-        }
-
-        glEnable(GL_CLIP_DISTANCE0);
-
-        glBindFramebuffer(GL_FRAMEBUFFER, reflectionFrameBuffer);
-        glViewport(0, 0, REFLECTION_WIDTH, REFRACTION_HEIGHT);
-
-        glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-        float cameraToWaterDistance = scene.cameraPos.y - waterLevel;
-        scene.cameraPos.y -= 2 * cameraToWaterDistance;
-        scene.cameraDir.y *= -1;
-        scene.View = glm::lookAt(
-                scene.cameraPos,
-                scene.cameraDir + scene.cameraPos,
-                glm::vec3(0, 1, 0)
-        );
-
-        glm::mat4 oldProjection = scene.Projection;
-        glm::vec4 waterPlane = glm::vec4(0, 1, 0, -waterLevel);
-        Projection = CalculateOblique(oldProjection, scene.View * waterPlane);
-        scene.waterNormal = 1.0f;
-        scene.DrawScene();
-        scene.cameraPos.y += 2 * cameraToWaterDistance;
-        scene.cameraDir.y *= -1;
-        scene.View = glm::lookAt(
-                scene.cameraPos,
-                scene.cameraDir + scene.cameraPos,
-                glm::vec3(0, 1, 0)
-        );
-        scene.Projection = oldProjection;
-
-        glBindFramebuffer(GL_FRAMEBUFFER, refractionFrameBuffer);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
         glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         scene.waterNormal = -1.0f;
+
+        scene.lights.clear();
+        scene.lights.push_back(light1);
+        scene.lights.push_back(light2);
+        scene.lights.push_back(light3);
+        scene.lights.push_back(light4);
+
         scene.DrawScene();
 
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        wallShader.use();
+        wallShader.set_uniform("model", glm::value_ptr(scene.worldModel));
+        wallShader.set_uniform("view", glm::value_ptr(scene.View));
+        wallShader.set_uniform("projection", glm::value_ptr(scene.Projection));
 
-        glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        glDisable(GL_CLIP_DISTANCE0);
+        wallShader.set_uniform("MAX_STEP_COUNT", maxStepCount);
+        wallShader.set_uniform("MAX_HEIGHT", maxHeight);
+        wallShader.set_uniform("STEP_LENGTH", stepLength);
 
-        float nearPlane = 1.0f, farPlane = 24.0f;
-        glm::mat4 lightView = glm::lookAt(glm::vec3(0,-1,0) + 10.0f * glm::vec3(scene.sun.direction.x, scene.sun.direction.y, scene.sun.direction.z),
-                                          glm::vec3(0.0f, 0.0f,  0.0f),
-                                          glm::vec3(0.0f, 1.0f,  0.0f));
+        wallShader.set_uniform("normalBump", false);
+        wallShader.set_uniform("pom", false);
+        wallShader.set_uniform("pomAndShadows", false);
 
-        CalculateCascades(lightProjections, planes, scene.View, lightView, display_w, display_h, fov);
-
-        glm::mat4 oldView = scene.View;
-        oldProjection = scene.Projection;
-
-        for (int i = 0; i < 3; i++) {
-            glViewport(0, 0, resolutions[i].first, resolutions[i].second);
-            glBindFramebuffer(GL_FRAMEBUFFER, shadowFrameBuffers[i]);
-            glClear(GL_DEPTH_BUFFER_BIT);
-
-            scene.View = lightView;
-            scene.Projection = lightProjections[i];
-            lightSpaceMatrices[i] = scene.Projection * scene.View;
-
-            scene.DrawShadows();
-
-            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        if (strcmp(current_item, "NORMAL BUMP") == 0) {
+            wallShader.set_uniform("normalBump", true);
+        } else if (strcmp(current_item, "POM") == 0) {
+            wallShader.set_uniform("pom", true);
+        } else if (strcmp(current_item, "POM & SHADOWS") == 0) {
+            wallShader.set_uniform("pomAndShadows", true);
         }
 
-        glViewport(0, 0, display_w, display_h);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        auto zBufferParams = glm::vec4(1 - far / near, far / near, 1 / far - 1 / near, 1 / near);
+        wallShader.set_uniform("zBufferParams", zBufferParams.x, zBufferParams.y, zBufferParams.z, zBufferParams.w);
 
-        scene.View = oldView;
-        scene.Projection = oldProjection;
+        wallShader.set_uniform("cameraPosition", scene.cameraPos.x, scene.cameraPos.y, scene.cameraPos.z);
+        wallShader.set_uniform("reflectivity", reflectivity);
 
-        scene.shadowDepthTextures = shadowDepthTextures;
-        scene.lightSpaceMatrices = lightSpaceMatrices;
 
-        scene.DrawScene();
-
-        waterShader.use();
-        waterShader.set_uniform("model", glm::value_ptr(scene.worldModel));
-        waterShader.set_uniform("view", glm::value_ptr(scene.View));
-        waterShader.set_uniform("projection", glm::value_ptr(scene.Projection));
-
-        waterShader.set_uniform("sunPosition", sun.direction.x, sun.direction.y, -sun.direction.z);
-        waterShader.set_uniform("projectorPosition", scene.projector.position.x, scene.projector.position.y, scene.projector.position.z);
-        waterShader.set_uniform("projectorDirection", scene.projector.direction.x, scene.projector.direction.y, scene.projector.direction.z);
-        waterShader.set_uniform("projectorAngle", projector.angle);
-        waterShader.set_uniform("cameraPosition", scene.cameraPos.x, scene.cameraPos.y, scene.cameraPos.z);
-        waterShader.set_uniform("windFactor", windFactor);
+        wallShader.set_uniform("worldLightDir1", light1.direction.x, light1.direction.y, light1.direction.z);
+        wallShader.set_uniform("worldLightDir2", light2.direction.x, light2.direction.y, light2.direction.z);
+        wallShader.set_uniform("worldLightDir3", light3.direction.x, light3.direction.y, light3.direction.z);
+        wallShader.set_uniform("worldLightDir4", light4.direction.x, light4.direction.y, light4.direction.z);
 
         glActiveTexture(GL_TEXTURE0);
-        waterShader.set_uniform("reflection_texture", 0);
-        glBindTexture(GL_TEXTURE_2D, reflectionTexture);
+        wallShader.set_uniform("wall_texture", 0);
+        glBindTexture(GL_TEXTURE_2D, plane.textures[0].id);
         glActiveTexture(GL_TEXTURE0 + 1);
-        waterShader.set_uniform("refraction_texture", 1);
-        glBindTexture(GL_TEXTURE_2D, scene.landscape.mesh.textures[0].id);
+        wallShader.set_uniform("wall_normal", 1);
+        glBindTexture(GL_TEXTURE_2D, plane.textures[1].id);
         glActiveTexture(GL_TEXTURE0 + 2);
-        waterShader.set_uniform("water_normal", 2);
-        glBindTexture(GL_TEXTURE_2D, water.textures[1].id);
-
-        glActiveTexture(GL_TEXTURE0 + 3);
-        waterShader.set_uniform("water_dudv", 3);
-        glBindTexture(GL_TEXTURE_2D, water.textures[2].id);
+        wallShader.set_uniform("wall_height", 2);
+        glBindTexture(GL_TEXTURE_2D, plane.textures[2].id);
 
 
-        glBindVertexArray(water.MeshVAO);
+        glBindVertexArray(plane.MeshVAO);
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+
+
+        auto duration = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t1).count();
+
+        std::cout << duration / 1000 << std::endl;
+        currentFrames++;
+        currentTime += duration;
+        if (currentTime >= 1000) {
+            fps = currentFrames / (currentTime / 1000);
+            currentTime = 0;
+            currentFrames = 0;
+        }
+
+        ImGui::Begin("Stats");
+        ImGui::Text("ms per frame: %f", duration);
+        ImGui::Text("FPS: %f", fps);
+        ImGui::End();
 
         // Generate gui render commands
         ImGui::Render();
@@ -451,10 +341,10 @@ int main(int, char **) {
         // Swap the backbuffer with the frontbuffer that is used for screen display
         glfwSwapBuffers(window);
         glfwPollEvents();
+
+        t1 = std::chrono::steady_clock::now();
     }
 
-    // Cleanup
-    CleanUp();
 
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplGlfw_Shutdown();

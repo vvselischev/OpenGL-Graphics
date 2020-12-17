@@ -33,31 +33,21 @@ add_executable( opengl-imgui-sample
                 bindings/imgui_impl_opengl3.cpp
                 bindings/imgui_impl_glfw.h
                 bindings/imgui_impl_opengl3.h
-        assets/model_shader.vs
-        assets/model_shader.fs
-        assets/cubemap_shader.vs
-        assets/cubemap_shader.fs
+        assets/wall_shader.vs
+        assets/wall_shader.fs
         assets/simple_shader.vs
         assets/simple_shader.fs
-        assets/water_shader.vs
-        assets/water_shader.fs
-        assets/landscape_shader.vs
-        assets/landscape_shader.fs
-        assets/empty_shader.fs)
+        assets/cubemap_shader.vs
+        assets/cubemap_shader.fs)
 
 add_custom_command(TARGET opengl-imgui-sample
     POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_SOURCE_DIR}/assets/model_shader.vs ${PROJECT_BINARY_DIR}
-    COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_SOURCE_DIR}/assets/model_shader.fs ${PROJECT_BINARY_DIR}
         COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_SOURCE_DIR}/assets/cubemap_shader.vs ${PROJECT_BINARY_DIR}
         COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_SOURCE_DIR}/assets/cubemap_shader.fs ${PROJECT_BINARY_DIR}
+        COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_SOURCE_DIR}/assets/wall_shader.vs ${PROJECT_BINARY_DIR}
+        COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_SOURCE_DIR}/assets/wall_shader.fs ${PROJECT_BINARY_DIR}
         COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_SOURCE_DIR}/assets/simple_shader.vs ${PROJECT_BINARY_DIR}
         COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_SOURCE_DIR}/assets/simple_shader.fs ${PROJECT_BINARY_DIR}
-        COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_SOURCE_DIR}/assets/water_shader.vs ${PROJECT_BINARY_DIR}
-        COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_SOURCE_DIR}/assets/water_shader.fs ${PROJECT_BINARY_DIR}
-        COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_SOURCE_DIR}/assets/landscape_shader.vs ${PROJECT_BINARY_DIR}
-        COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_SOURCE_DIR}/assets/landscape_shader.fs ${PROJECT_BINARY_DIR}
-        COMMAND ${CMAKE_COMMAND} -E copy ${PROJECT_SOURCE_DIR}/assets/empty_shader.fs ${PROJECT_BINARY_DIR}
         )
 
 target_compile_definitions(opengl-imgui-sample PUBLIC IMGUI_IMPL_OPENGL_LOADER_GLEW)
