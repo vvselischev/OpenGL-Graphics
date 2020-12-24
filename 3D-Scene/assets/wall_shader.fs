@@ -48,17 +48,17 @@ void main()
 
     float depth = 0;
     if (pom || pomAndShadows) {
-        float angle = acos(-dot(tangentNormal, tangentViewDir));
-        for (int j = 0; j < MAX_STEP_COUNT; j++) {
-            depth = MAX_HEIGHT - texture(wall_height, uv).r * MAX_HEIGHT;
-            float currentDepth = (j + 1) * STEP_LENGTH / tan(angle);
+    	depth = texture(wall_height, uv).r;
+        float currentDepth = 0.0;
+        for (int j = 1; j < MAX_STEP_COUNT; j++) {
             if (currentDepth < depth) {
-                uv += STEP_LENGTH * tangentViewDir.xz;
+                uv += MAX_HEIGHT * tangentViewDir.xy / tangentViewDir.z / MAX_STEP_COUNT;
+                depth = texture(wall_height, uv).r;
+                currentDepth = j * 1.0 / MAX_STEP_COUNT;
             } else {
             	break;
             }
         }
-        depth = MAX_HEIGHT - texture(wall_height, uv).r * MAX_HEIGHT;
     }
 
 	float shadow = 0;
@@ -66,22 +66,22 @@ void main()
         shadow = 1;
     	for (int i = 0; i < 4; i++) {
     		float currentShadow = 0;
-    		vec3 worldLightDir = lights[i] - aPosition;
+    		vec3 worldLightDir = normalize(aPosition - lights[i]);
 			vec3 tangentLightDir = normalize(tbn * worldLightDir);
-			float angle = acos(dot(tangentNormal, tangentLightDir));
+
 			vec2 currentUV = uv;
-			float rayDepth = MAX_HEIGHT - texture(wall_height, currentUV).r * MAX_HEIGHT;
 
-			for (int j = 1; j <= MAX_STEP_COUNT; j++) {
-				float currentDepth = rayDepth - j * STEP_LENGTH / tan(angle);
-				currentUV += STEP_LENGTH * tangentLightDir.xz;
-				float surfaceDepth = MAX_HEIGHT - texture(wall_height, currentUV).r * MAX_HEIGHT;
+			float surfaceDepth = MAX_HEIGHT * (1 - texture(wall_height, currentUV).r);
+			float currentDepth = surfaceDepth;
 
+			for (int j = 1; j < MAX_STEP_COUNT; j++) {
 				if (currentDepth > surfaceDepth) {
-					currentShadow += max(1.0, (currentDepth - surfaceDepth) / surfaceDepth);
-				} else if (currentDepth <= 0){
-					break;
+					currentShadow += max(1.0, (currentDepth - surfaceDepth) / MAX_HEIGHT);
 				}
+
+				currentUV -= tangentLightDir.xy * (MAX_HEIGHT / MAX_STEP_COUNT);
+				surfaceDepth = MAX_HEIGHT * (1 - texture(wall_height, currentUV).r);
+				currentDepth -= MAX_HEIGHT / MAX_STEP_COUNT;
 			}
 			shadow = min(shadow, currentShadow);
         }
@@ -112,8 +112,4 @@ void main()
 
     o_frag_color = texture(wall_texture, uv);
     o_frag_color = vec4((diffuseLight + ambient) * o_frag_color.xyz, 1);
-
-    //float z = -depth;
-    //z = 1.0 / (zBufferParams.z * z + zBufferParams.w);
-   // gl_FragDepth = (1 - zBufferParams.w * z) / (zBufferParams.z * z);
 }

@@ -129,11 +129,11 @@ int main(int, char **) {
     DirectionalLight light4;
     light4.direction = glm::vec3(-1, 0.4, 1);
 
-    scene.cube = LoadCubeVertices(0.05);
+    scene.cube = LoadCubeVertices(0.01);
 
     float maxHeight = 0.006;
     int maxStepCount = 90;
-    float stepLength = 0.0001;
+    float stepLength = 1;
     int stepLengthRatio = 10;
     float currentFrames = 0;
     float currentTime = 0;
@@ -150,10 +150,9 @@ int main(int, char **) {
         ImGui::Begin("Parallax Occlusion");
 
         ImGui::SliderFloat("Max height", &maxHeight, 0.0001, 0.01);
-        ImGui::SliderInt("Max step count", &maxStepCount, 2, 256);
-        ImGui::SliderInt("StepLength", &stepLengthRatio, 1, 10);
+        ImGui::SliderInt("Max step count", &maxStepCount, 2, 128);
 
-        stepLength = (float) stepLengthRatio / 100000;
+        stepLength = (float) stepLengthRatio;
 
         ImGui::SliderFloat("light1.x", &light1.direction.x, -4, 4);
         ImGui::SliderFloat("light1.y", &light1.direction.y, 0, 2);
@@ -318,7 +317,7 @@ int main(int, char **) {
 
         auto duration = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t1).count();
 
-        std::cout << duration / 1000 << std::endl;
+       // std::cout << duration / 1000 << std::endl;
         currentFrames++;
         currentTime += duration;
         if (currentTime >= 1000) {
